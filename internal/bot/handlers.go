@@ -4,7 +4,9 @@ import (
 	"html"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/rs/zerolog/log"
 	tele "gopkg.in/telebot.v4"
 
 	"gymbro/internal/apiclient"
@@ -33,19 +35,21 @@ func (b *Bot) onText(c tele.Context) error {
 
 // onEdited updates the preview of an edited message in place. The message's
 // Date is the original post date, not the edit time. A message that is not in
-// the cache (e.g. after a restart) gets a fresh preview and a new draft.
+// cache or store (unknown or expired) gets a fresh preview and a new draft.
 func (b *Bot) onEdited(c tele.Context) error {
 	msg := c.Message()
 	if msg.Text == "" || strings.HasPrefix(msg.Text, "/") {
 		return nil
 	}
-	d, ok := b.drafts.get(draftKey{ChatID: msg.Chat.ID, MsgID: msg.ID})
+	key := draftKey{ChatID: msg.Chat.ID, MsgID: msg.ID}
+	d, ok := b.drafts.get(b.ctx, key)
 	if !ok {
 		return b.startDraft(msg)
 	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	defer b.drafts.persist(b.ctx, key, d)
 	d.Text = msg.Text
 	d.Posted = msg.Time().In(postZone)
 	d.SavedWorkoutID = 0 // the saved workout no longer matches the text
@@ -105,12 +109,13 @@ func (b *Bot) onAliasExercise(c tele.Context) error {
 // draft; no draft means nothing to do. A saved draft needs no more than the
 // re-render: the API merge already repointed its entries.
 func (b *Bot) refreshLatestDraft(chat *tele.Chat) error {
-	key, d, ok := b.drafts.latest(chat.ID)
+	key, d, ok := b.drafts.latest(b.ctx, chat.ID)
 	if !ok {
 		return nil
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	defer b.drafts.persist(b.ctx, key, d)
 	return b.refreshPreview(&tele.Message{ID: key.MsgID, Chat: chat}, d)
 }
 
@@ -149,12 +154,14 @@ func (b *Bot) onCallback(c tele.Context) error {
 	}
 
 	chatID := c.Chat().ID
-	d, ok := b.drafts.get(draftKey{ChatID: chatID, MsgID: data.MsgID})
+	key := draftKey{ChatID: chatID, MsgID: data.MsgID}
+	d, ok := b.drafts.get(b.ctx, key)
 	if !ok {
 		return b.out.answer(b.ctx, cb, plain(txtCbDraftMissing), true)
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	defer b.drafts.persist(b.ctx, key, d)
 
 	userMsg := &tele.Message{ID: data.MsgID, Chat: c.Chat()}
 	switch data.Kind {
@@ -261,12 +268,31 @@ func (b *Bot) onSave(cb *tele.Callback, userMsg *tele.Message, d *draft) error {
 		logAPIError("resolve_identity", err)
 		return b.out.answer(b.ctx, cb, apiErrorPlain(err), true)
 	}
+	firstSaved, known, err := b.state.FirstSave(b.ctx, userMsg.Chat.ID, userMsg.ID)
+	if err != nil {
+		log.Error().Err(err).Str("op", "first_save_get").Msg("state call failed")
+		return b.out.answer(b.ctx, cb, plain(txtCbStateFailed), true)
+	}
+	if !known {
+		firstSaved = time.Now()
+	}
+
 	ctx, cancel := b.apiCtx()
 	defer cancel()
-	resp, err := b.api.SaveWorkout(ctx, userID, saveRequest(w, d.Text, userMsg))
+	req := saveRequest(w, d.Text, userMsg)
+	req.StartedAt, req.FinishedAt = workoutTimes(d.Posted, firstSaved)
+	resp, err := b.api.SaveWorkout(ctx, userID, req)
 	if err != nil {
 		logAPIError("save_workout", err)
 		return b.out.answer(b.ctx, cb, apiErrorPlain(err), true)
+	}
+	// Stored only after the API accepted the save, so a failed save does not fix the time.
+	// Failing here loses nothing but the first-save time; the workout is saved.
+	if !known {
+		err = b.state.SetFirstSave(b.ctx, userMsg.Chat.ID, userMsg.ID, firstSaved)
+		if err != nil {
+			log.Error().Err(err).Str("op", "first_save_set").Msg("state call failed")
+		}
 	}
 
 	d.SavedWorkoutID = resp.WorkoutID
@@ -286,6 +312,15 @@ func (b *Bot) onSave(cb *tele.Callback, userMsg *tele.Message, d *draft) error {
 		lines = append(lines, tr(txtNewExerciseItem, name, name))
 	}
 	return b.sendLong(userMsg.Chat.ID, strings.Join(lines, "\n"))
+}
+
+// workoutTimes returns the workout's start (message post time) and finish
+// (first save). A finish before the start (clock skew) is replaced by the start.
+func workoutTimes(posted, firstSaved time.Time) (started, finished *time.Time) {
+	if firstSaved.Before(posted) {
+		firstSaved = posted
+	}
+	return &posted, &firstSaved
 }
 
 // saveRequest builds the API request from a parse. source_ref is "<chat id>:<message id>".

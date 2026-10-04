@@ -1,12 +1,16 @@
 package bot
 
 import (
+	"context"
 	"math"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"gymbro/internal/apiclient"
+	"gymbro/internal/bot/state"
 	"gymbro/internal/parser"
 )
 
@@ -157,32 +161,33 @@ func TestAnalyzeNamesDedupesByKeyAndResolves(t *testing.T) {
 }
 
 func TestDraftCacheTTL(t *testing.T) {
+	ctx := context.Background()
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	cache := newDraftCache(48*time.Hour, func() time.Time { return now })
+	cache := newDraftCache(openTestStore(t, filepath.Join(t.TempDir(), "bot.db")), 48*time.Hour, func() time.Time { return now })
 	k1, k2 := draftKey{1, 1}, draftKey{1, 2}
-	cache.put(k1, &draft{})
-	cache.put(k2, &draft{})
+	cache.put(ctx, k1, &draft{})
+	cache.put(ctx, k2, &draft{})
 
 	now = now.Add(47 * time.Hour)
-	if _, ok := cache.get(k1); !ok { // touch k1
+	if _, ok := cache.get(ctx, k1); !ok { // touch k1
 		t.Fatal("k1 evicted before TTL")
 	}
 
 	now = now.Add(2 * time.Hour) // k2 idle 49h, k1 idle 2h
-	cache.sweep()
+	cache.sweep(ctx)
 	if cache.len() != 1 {
 		t.Fatalf("sweep left %d drafts, want 1", cache.len())
 	}
-	if _, ok := cache.get(k2); ok {
+	if _, ok := cache.get(ctx, k2); ok {
 		t.Error("k2 should be evicted")
 	}
-	if _, ok := cache.get(k1); !ok {
+	if _, ok := cache.get(ctx, k1); !ok {
 		t.Error("touched k1 should survive")
 	}
 
 	// Lazy eviction on get without a sweep.
 	now = now.Add(49 * time.Hour)
-	if _, ok := cache.get(k1); ok {
+	if _, ok := cache.get(ctx, k1); ok {
 		t.Error("expired k1 returned")
 	}
 	if cache.len() != 0 {
@@ -191,30 +196,150 @@ func TestDraftCacheTTL(t *testing.T) {
 }
 
 func TestDraftCacheLatest(t *testing.T) {
+	ctx := context.Background()
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	cache := newDraftCache(48*time.Hour, func() time.Time { return now })
+	cache := newDraftCache(openTestStore(t, filepath.Join(t.TempDir(), "bot.db")), 48*time.Hour, func() time.Time { return now })
 	d1, d2, other := &draft{}, &draft{}, &draft{}
 	k1, k2 := draftKey{1, 1}, draftKey{1, 2}
 
-	if _, _, ok := cache.latest(1); ok {
+	if _, _, ok := cache.latest(ctx, 1); ok {
 		t.Fatal("empty cache returned a draft")
 	}
-	cache.put(k1, d1)
+	cache.put(ctx, k1, d1)
 	now = now.Add(time.Hour)
-	cache.put(k2, d2)
+	cache.put(ctx, k2, d2)
 	now = now.Add(time.Hour)
-	cache.put(draftKey{2, 3}, other)
+	cache.put(ctx, draftKey{2, 3}, other)
 
-	if key, d, ok := cache.latest(1); !ok || key != k2 || d != d2 {
+	if key, d, ok := cache.latest(ctx, 1); !ok || key != k2 || d != d2 {
 		t.Fatalf("latest = (%v, %p, %v), want k2", key, d, ok)
 	}
 	now = now.Add(time.Hour)
-	cache.get(k1) // touching k1 makes it the latest
-	if key, _, _ := cache.latest(1); key != k1 {
+	cache.get(ctx, k1) // touching k1 makes it the latest
+	if key, _, _ := cache.latest(ctx, 1); key != k1 {
 		t.Fatalf("latest after touch = %v, want k1", key)
 	}
 	now = now.Add(49 * time.Hour)
-	if _, _, ok := cache.latest(1); ok {
+	if _, _, ok := cache.latest(ctx, 1); ok {
 		t.Fatal("expired drafts returned")
+	}
+}
+
+func openTestStore(t *testing.T, path string) *state.Store {
+	t.Helper()
+	st, err := state.Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st
+}
+
+// restartedCache opens a fresh cache over the same DB file, like a bot restart.
+func restartedCache(t *testing.T, path string, now func() time.Time) *draftCache {
+	return newDraftCache(openTestStore(t, path), 48*time.Hour, now)
+}
+
+func TestDraftPersistence(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "bot.db")
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	cache := restartedCache(t, path, clock)
+
+	key := draftKey{1, 10}
+	want := &draft{
+		Text:           "bench 3x5x100",
+		Posted:         time.Date(2025, 12, 31, 18, 30, 0, 0, postZone),
+		Kept:           map[string]bool{"benchh": true},
+		PreviewIDs:     []int{11, 12},
+		Suspects:       []suspectRef{{Key: "benchh", Name: "Benchh"}, {Key: "squatt", Name: "Squatt"}},
+		SavedWorkoutID: 42,
+	}
+	cache.put(ctx, key, want)
+
+	// Restart: a fresh cache loads the draft from SQLite with every field.
+	now = now.Add(time.Hour)
+	fresh := restartedCache(t, path, clock)
+	got, ok := fresh.get(ctx, key)
+	if !ok {
+		t.Fatal("draft not loaded after restart")
+	}
+	if got.Text != want.Text || !got.Posted.Equal(want.Posted) || got.SavedWorkoutID != 42 ||
+		!reflect.DeepEqual(got.Kept, want.Kept) || !reflect.DeepEqual(got.PreviewIDs, want.PreviewIDs) ||
+		!reflect.DeepEqual(got.Suspects, want.Suspects) {
+		t.Fatalf("round trip = %+v, want %+v", got, want)
+	}
+	if again, _ := fresh.get(ctx, key); again != got {
+		t.Error("second get must return the cached draft")
+	}
+
+	// A mutation persisted via persist is seen after the next restart.
+	got.Text = "edited"
+	fresh.persist(ctx, key, got)
+	got2, ok := restartedCache(t, path, clock).get(ctx, key)
+	if !ok || got2.Text != "edited" {
+		t.Fatalf("persisted edit lost: %+v ok=%v", got2, ok)
+	}
+
+	if _, ok := fresh.get(ctx, draftKey{1, 99}); ok {
+		t.Error("unknown draft found")
+	}
+}
+
+func TestDraftPersistenceTTL(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "bot.db")
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	cache := restartedCache(t, path, clock)
+	k1, k2 := draftKey{1, 1}, draftKey{1, 2}
+	cache.put(ctx, k1, &draft{Text: "a"})
+	cache.put(ctx, k2, &draft{Text: "b"})
+
+	// A stale row reads as missing and is deleted.
+	now = now.Add(49 * time.Hour)
+	fresh := restartedCache(t, path, clock)
+	if _, ok := fresh.get(ctx, k1); ok {
+		t.Fatal("stale row returned")
+	}
+	st := openTestStore(t, path)
+	_, found, err := st.LoadDraft(ctx, k1.ChatID, k1.MsgID)
+	if err != nil || found {
+		t.Fatalf("stale row not deleted: found=%v err=%v", found, err)
+	}
+
+	// The sweep deletes the remaining expired row.
+	fresh.sweep(ctx)
+	_, found, err = st.LoadDraft(ctx, k2.ChatID, k2.MsgID)
+	if err != nil || found {
+		t.Fatalf("sweep kept expired row: found=%v err=%v", found, err)
+	}
+}
+
+func TestDraftPersistenceLatest(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "bot.db")
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	cache := restartedCache(t, path, clock)
+	cache.put(ctx, draftKey{1, 1}, &draft{Text: "old"})
+	now = now.Add(time.Hour)
+	cache.put(ctx, draftKey{1, 2}, &draft{Text: "newer"})
+	now = now.Add(time.Hour)
+	cache.put(ctx, draftKey{2, 3}, &draft{Text: "other chat"})
+
+	fresh := restartedCache(t, path, clock)
+	key, d, ok := fresh.latest(ctx, 1)
+	if !ok || key != (draftKey{1, 2}) || d.Text != "newer" {
+		t.Fatalf("latest = (%v, %v, %v), want msg 2", key, d, ok)
+	}
+	if got, _ := fresh.get(ctx, key); got != d {
+		t.Error("latest must adopt the draft into the cache")
+	}
+
+	now = now.Add(49 * time.Hour)
+	if _, _, ok := restartedCache(t, path, clock).latest(ctx, 1); ok {
+		t.Fatal("expired rows returned by latest")
 	}
 }

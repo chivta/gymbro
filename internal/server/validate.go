@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
+	"gymbro/internal/apiclient"
 	"gymbro/internal/workout"
 )
 
@@ -31,7 +32,21 @@ func newValidator() (*validator.Validate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("register workout_type: %w", err)
 	}
+
+	v.RegisterStructValidation(validateTimes, apiclient.SaveWorkoutRequest{})
 	return v, nil
+}
+
+// validateTimes: started_at and finished_at come together, finished not before started.
+func validateTimes(sl validator.StructLevel) {
+	req := sl.Current().Interface().(apiclient.SaveWorkoutRequest)
+	if (req.StartedAt == nil) != (req.FinishedAt == nil) {
+		sl.ReportError(req.FinishedAt, "FinishedAt", "finished_at", "times_together", "")
+		return
+	}
+	if req.StartedAt != nil && req.FinishedAt.Before(*req.StartedAt) {
+		sl.ReportError(req.FinishedAt, "FinishedAt", "finished_at", "gte_started_at", "")
+	}
 }
 
 // trimName strips surrounding whitespace so a blank name fails `required`.

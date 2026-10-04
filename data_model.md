@@ -24,7 +24,7 @@ A workout is one gym session. It belongs to one user and holds:
 | Workout type | Optional. One of a closed set: `lower`, `upper`, `push`, `pull`, `full body`, `push+pull`, `push+lower`, and the names of the 2024-2025 programs `workout A`, `workout B`, `день 1`, `день 2`, `руки`, `рест`. Stored as text; the allowed set is application configuration, not a database constraint, and is expected to grow. Matching is case-insensitive. The historical import also stored `pull+push` as `push+pull` and `legs` as `lower`; that was cleanup of one user's data, and the bot parser has no such mappings. |
 | Calories, protein | Optional integers describing intake before the workout (kcal and grams). Most historical workouts have neither; the user started recording them recently. |
 | Note | Optional free text. Anything in the header that is not the date, a recognized workout type, or the intake block. |
-| Started, finished | Optional timestamps of the session's start and end, set together or not at all. |
+| Started, finished | Optional timestamps of the session's start and end, set together or not at all. The API stores whatever a save sends (a re-save replaces them). The bot sends start = the message's post time and finish = the time of the message's first save, and keeps that first-save time across re-saves and restarts, so editing and saving again does not move the finish. |
 | Raw text | The exact text the workout was parsed from. Always present. |
 | Source, source ref | Where the workout came from and an identifier within that source (see below). |
 

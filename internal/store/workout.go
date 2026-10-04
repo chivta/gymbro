@@ -17,8 +17,8 @@ var selectAliasTarget = `SELECT exercise_id FROM exercise_aliases WHERE user_id 
 const (
 	// upsertWorkout keeps the workout id on conflict and bumps updated_at.
 	// xmax = 0 is true only for a freshly inserted row.
-	upsertWorkout = `INSERT INTO workouts (user_id, performed_on, workout_type, kcal, protein_g, note, raw_text, source, source_ref)
-		VALUES ($1, $2::text::date, NULLIF($3::text, ''), $4, $5, NULLIF($6::text, ''), $7, $8, $9)
+	upsertWorkout = `INSERT INTO workouts (user_id, performed_on, workout_type, kcal, protein_g, note, raw_text, source, source_ref, started_at, finished_at)
+		VALUES ($1, $2::text::date, NULLIF($3::text, ''), $4, $5, NULLIF($6::text, ''), $7, $8, $9, $10, $11)
 		ON CONFLICT (user_id, source, source_ref) DO UPDATE SET
 			performed_on = EXCLUDED.performed_on,
 			workout_type = EXCLUDED.workout_type,
@@ -26,6 +26,8 @@ const (
 			protein_g    = EXCLUDED.protein_g,
 			note         = EXCLUDED.note,
 			raw_text     = EXCLUDED.raw_text,
+			started_at   = EXCLUDED.started_at,
+			finished_at  = EXCLUDED.finished_at,
 			updated_at   = now()
 		RETURNING id, (xmax = 0)`
 
@@ -47,7 +49,7 @@ func (s *Store) SaveWorkout(ctx context.Context, userID int64, req apiclient.Sav
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, upsertWorkout,
 			userID, req.PerformedOn, canonicalType(req.Type), req.Kcal, req.ProteinG,
-			req.Note, req.RawText, req.Source, req.SourceRef,
+			req.Note, req.RawText, req.Source, req.SourceRef, req.StartedAt, req.FinishedAt,
 		).Scan(&resp.WorkoutID, &resp.Created)
 		if err != nil {
 			return fmt.Errorf("upsert workout: %w", err)

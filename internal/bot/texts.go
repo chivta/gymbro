@@ -33,6 +33,7 @@ const (
 	txtCbDraftMissing = "cb_draft_missing"
 	txtCbStale        = "cb_stale"
 	txtCbSaved        = "cb_saved"
+	txtCbStateFailed  = "cb_state_failed"
 	txtCbCannotSave   = "cb_cannot_save"
 	txtCbPlanned      = "cb_planned"
 	txtCbDone         = "cb_done"
@@ -87,6 +88,7 @@ var texts = map[string]string{
 	txtCbDraftMissing: "This message is no longer tracked. Edit it or send it again.",
 	txtCbStale:        "The suggestions changed, refreshed.",
 	txtCbSaved:        "Saved.",
+	txtCbStateFailed:  "Could not read the saved time. Try again.",
 	txtCbCannotSave:   "Cannot save yet, refreshed.",
 	txtCbPlanned:      "Unfinished sets, cannot save yet.",
 	txtCbDone:         "Done.",

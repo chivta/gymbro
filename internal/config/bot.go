@@ -14,6 +14,8 @@ type BotConfig struct {
 	Token      string `env:"BOT_TOKEN"    validate:"required"`
 	APIBaseURL string `env:"API_BASE_URL" validate:"required,url"`
 	APISecret  string `env:"API_SECRET"   validate:"required"`
+	// DBPath is the bot's SQLite file (first-save times of workouts).
+	DBPath string `env:"BOT_DB_PATH" validate:"required"`
 	// AllowedTelegramUserID is the only Telegram user the bot talks to.
 	AllowedTelegramUserID int64 `env:"ALLOWED_TELEGRAM_USER_ID" validate:"required,gt=0"`
 }

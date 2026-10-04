@@ -2,6 +2,7 @@ package server
 
 import (
 	"testing"
+	"time"
 
 	"gymbro/internal/apiclient"
 )
@@ -12,6 +13,8 @@ func TestSaveWorkoutValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	neg := -1
+	t0 := time.Date(2026, 10, 3, 18, 0, 0, 0, time.UTC)
+	before, after := t0.Add(-time.Minute), t0.Add(time.Hour)
 
 	valid := func() apiclient.SaveWorkoutRequest {
 		return apiclient.SaveWorkoutRequest{
@@ -34,6 +37,11 @@ func TestSaveWorkoutValidation(t *testing.T) {
 		{"zero reps", func(r *apiclient.SaveWorkoutRequest) { r.Entries[0].Sets[0].Reps = 0 }, false},
 		{"empty name", func(r *apiclient.SaveWorkoutRequest) { r.Entries[0].Name = "" }, false},
 		{"no source ref", func(r *apiclient.SaveWorkoutRequest) { r.SourceRef = "" }, false},
+		{"times ok", func(r *apiclient.SaveWorkoutRequest) { r.StartedAt, r.FinishedAt = &t0, &after }, true},
+		{"times equal", func(r *apiclient.SaveWorkoutRequest) { r.StartedAt, r.FinishedAt = &t0, &t0 }, true},
+		{"only started", func(r *apiclient.SaveWorkoutRequest) { r.StartedAt = &t0 }, false},
+		{"only finished", func(r *apiclient.SaveWorkoutRequest) { r.FinishedAt = &t0 }, false},
+		{"finished before started", func(r *apiclient.SaveWorkoutRequest) { r.StartedAt, r.FinishedAt = &t0, &before }, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

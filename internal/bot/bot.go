@@ -1,6 +1,6 @@
 // Package bot is the Telegram front end of the workout logger: it previews
 // workout messages, resolves exercise-name typos and saves through the API.
-// All state is the API plus an in-memory draft cache.
+// State is the API, an in-memory draft cache and a SQLite file of first-save times.
 package bot
 
 import (
@@ -18,6 +18,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 
 	"gymbro/internal/apiclient"
+	"gymbro/internal/bot/state"
 	"gymbro/internal/config"
 	"gymbro/internal/parser"
 )
@@ -57,6 +58,7 @@ type Bot struct {
 	tg        *tele.Bot
 	out       *sender
 	drafts    *draftCache
+	state     *state.Store // first-save times and drafts, survives restarts
 	allowedID int64
 	userID    atomic.Int64 // internal user ID, 0 until resolved
 }
@@ -85,12 +87,19 @@ func Run(ctx context.Context, cfg config.BotConfig) error {
 		return errors.New(redact(fmt.Sprintf("create telegram bot: %v", err)))
 	}
 
+	st, err := state.Open(ctx, cfg.DBPath)
+	if err != nil {
+		return fmt.Errorf("open state: %w", err)
+	}
+	defer st.Close()
+
 	b := &Bot{
+		state:     st,
 		ctx:       ctx,
 		api:       apiclient.New(cfg.APIBaseURL, cfg.APISecret, &http.Client{Timeout: apiTimeout}),
 		tg:        tg,
 		out:       newSender(tg),
-		drafts:    newDraftCache(draftTTL, time.Now),
+		drafts:    newDraftCache(st, draftTTL, time.Now),
 		allowedID: cfg.AllowedTelegramUserID,
 	}
 	b.register()
@@ -312,7 +321,9 @@ func (b *Bot) startDraft(msg *tele.Message) error {
 	d := &draft{Text: msg.Text, Posted: msg.Time().In(postZone), Kept: map[string]bool{}}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	b.drafts.put(draftKey{ChatID: msg.Chat.ID, MsgID: msg.ID}, d)
+	key := draftKey{ChatID: msg.Chat.ID, MsgID: msg.ID}
+	b.drafts.put(b.ctx, key, d)
+	defer b.drafts.persist(b.ctx, key, d) // preview IDs and suspects change in refreshPreview
 	return b.refreshPreview(msg, d)
 }
 

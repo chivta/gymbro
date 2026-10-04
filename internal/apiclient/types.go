@@ -2,6 +2,8 @@
 // for it. The server imports the types, so both sides share one definition.
 package apiclient
 
+import "time"
+
 // Error codes returned by the API as {"error": "<code>"}.
 const (
 	CodeInvalidRequest   = "invalid_request"
@@ -32,17 +34,21 @@ type ResolveIdentityResponse struct {
 
 // SaveWorkoutRequest is one parsed workout. Type and Note are empty when absent.
 // Type is matched case-insensitively against workout.Types and stored canonically.
-// PerformedOn is an ISO date (YYYY-MM-DD).
+// PerformedOn is an ISO date (YYYY-MM-DD). StartedAt and FinishedAt (RFC 3339)
+// are both set or both absent, with FinishedAt not before StartedAt; a save
+// stores them as given, so absent clears any earlier values.
 type SaveWorkoutRequest struct {
-	PerformedOn string  `json:"performed_on"       validate:"required,datetime=2006-01-02"`
-	Type        string  `json:"type,omitempty"     validate:"omitempty,workout_type"`
-	Kcal        *int    `json:"kcal,omitempty"     validate:"omitempty,gte=0"`
-	ProteinG    *int    `json:"protein_g,omitempty" validate:"omitempty,gte=0"`
-	Note        string  `json:"note,omitempty"`
-	RawText     string  `json:"raw_text"           validate:"required"`
-	Source      string  `json:"source"             validate:"required"`
-	SourceRef   string  `json:"source_ref"         validate:"required"`
-	Entries     []Entry `json:"entries"            validate:"dive"`
+	PerformedOn string     `json:"performed_on"       validate:"required,datetime=2006-01-02"`
+	Type        string     `json:"type,omitempty"     validate:"omitempty,workout_type"`
+	Kcal        *int       `json:"kcal,omitempty"     validate:"omitempty,gte=0"`
+	ProteinG    *int       `json:"protein_g,omitempty" validate:"omitempty,gte=0"`
+	Note        string     `json:"note,omitempty"`
+	RawText     string     `json:"raw_text"           validate:"required"`
+	Source      string     `json:"source"             validate:"required"`
+	SourceRef   string     `json:"source_ref"         validate:"required"`
+	Entries     []Entry    `json:"entries"            validate:"dive"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	FinishedAt  *time.Time `json:"finished_at,omitempty"`
 }
 
 // Entry is one exercise line; its position is its index in the list. Sets may be empty.
