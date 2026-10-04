@@ -6,3 +6,5 @@ tmp_dir = "/tmp/air-bot"
 cmd = "go build -o /tmp/air-bot/bot ./cmd/bot"
 bin = "/tmp/air-bot/bot"
 include_ext = ["go", "sql"]
+# The frontend and import scripts are not Go; skip watching them.
+exclude_dir = ["web", "scripts"]

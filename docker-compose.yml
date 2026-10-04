@@ -25,6 +25,21 @@ services:
     depends_on:
       - api
 
+  web:
+    build:
+      context: ./web
+      target: dev
+    env_file: .env
+    environment:
+      API_PROXY_TARGET: http://api:8090
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
   postgres:
     image: postgres:18-alpine
     env_file: .env

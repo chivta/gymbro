@@ -22,10 +22,18 @@ type userURI struct {
 	ID int64 `uri:"id" validate:"required,gt=0"`
 }
 
+// listWorkoutsQuery: limit defaults to 20 and is bounded to 1..100 (struct tags
+// cannot reference constants); before is an opaque cursor checked by the store.
+type listWorkoutsQuery struct {
+	Limit  int    `form:"limit,default=20" validate:"gte=1,lte=100"`
+	Before string `form:"before"`
+}
+
 // register mounts the routes on the (already authenticated) /v1 group.
 func (h *handlers) register(v1 *gin.RouterGroup) {
 	v1.POST("/identities/resolve", h.resolveIdentity)
 	v1.POST("/users/:id/workouts", h.saveWorkout)
+	v1.GET("/users/:id/workouts", h.listWorkouts)
 	v1.GET("/users/:id/exercises", h.listExercises)
 	v1.POST("/users/:id/exercises/replace", h.replaceExercise)
 }
@@ -71,6 +79,30 @@ func (h *handlers) saveWorkout(c *gin.Context) {
 		status = http.StatusCreated
 	}
 	c.JSON(status, resp)
+}
+
+// listWorkouts serves one keyset page of workouts, newest first.
+func (h *handlers) listWorkouts(c *gin.Context) {
+	userID, ok := h.bindUser(c)
+	if !ok {
+		return
+	}
+	var q listWorkoutsQuery
+	err := c.ShouldBindQuery(&q)
+	if err != nil {
+		respondWithError(c, fmt.Errorf("bind query: %v: %w", err, apperr.ErrInvalidRequest))
+		return
+	}
+	if !h.valid(c, q) {
+		return
+	}
+
+	resp, err := h.store.ListWorkouts(c.Request.Context(), userID, q.Limit, q.Before)
+	if err != nil {
+		respondWithError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *handlers) listExercises(c *gin.Context) {

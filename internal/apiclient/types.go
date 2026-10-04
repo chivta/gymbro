@@ -93,3 +93,36 @@ type ReplaceExerciseResponse struct {
 	Outcome  string   `json:"outcome"`
 	Exercise Exercise `json:"exercise"`
 }
+
+// Workout is one stored workout as returned by the list endpoint. Absent optional
+// fields are null. PerformedOn is an ISO date; StartedAt and FinishedAt are UTC.
+// raw_text is not exposed.
+type Workout struct {
+	ID          int64          `json:"id"`
+	PerformedOn string         `json:"performed_on"`
+	Type        *string        `json:"type"`
+	Kcal        *int           `json:"kcal"`
+	ProteinG    *int           `json:"protein_g"`
+	Note        *string        `json:"note"`
+	StartedAt   *time.Time     `json:"started_at"`
+	FinishedAt  *time.Time     `json:"finished_at"`
+	Source      string         `json:"source"`
+	Entries     []WorkoutEntry `json:"entries"`
+}
+
+// WorkoutEntry is one exercise line of a stored workout, ordered by position.
+// Exercise is the linked exercise's display name; Sets may be empty. Weight is a
+// minimal decimal string ("60", "13.5").
+type WorkoutEntry struct {
+	Position      int    `json:"position"`
+	NameAsWritten string `json:"name_as_written"`
+	Exercise      string `json:"exercise"`
+	Sets          []Set  `json:"sets"`
+}
+
+// ListWorkoutsResponse is one page of workouts, newest first. NextCursor is the
+// opaque value to pass as `before` for the next page, null on the last page.
+type ListWorkoutsResponse struct {
+	Workouts   []Workout `json:"workouts"`
+	NextCursor *string   `json:"next_cursor"`
+}

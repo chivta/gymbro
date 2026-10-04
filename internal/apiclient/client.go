@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -40,6 +42,18 @@ func (c *Client) ResolveIdentity(ctx context.Context, req ResolveIdentityRequest
 func (c *Client) SaveWorkout(ctx context.Context, userID int64, req SaveWorkoutRequest) (SaveWorkoutResponse, error) {
 	var resp SaveWorkoutResponse
 	err := c.do(ctx, http.MethodPost, fmt.Sprintf("/v1/users/%d/workouts", userID), req, &resp)
+	return resp, err
+}
+
+// ListWorkouts returns one page of the user's workouts, newest first. Pass the
+// previous response's NextCursor as before, or "" for the first page.
+func (c *Client) ListWorkouts(ctx context.Context, userID int64, limit int, before string) (ListWorkoutsResponse, error) {
+	query := url.Values{"limit": {strconv.Itoa(limit)}}
+	if before != "" {
+		query.Set("before", before)
+	}
+	var resp ListWorkoutsResponse
+	err := c.do(ctx, http.MethodGet, fmt.Sprintf("/v1/users/%d/workouts?%s", userID, query.Encode()), nil, &resp)
 	return resp, err
 }
 
