@@ -29,6 +29,13 @@ const (
 	apiTimeout   = 10 * time.Second
 	pollTimeout  = 30 * time.Second
 	redactedText = "***"
+
+	// Command names, without the slash. Telegram allows lowercase letters,
+	// digits and underscores only.
+	cmdStart         = "start"
+	cmdHelp          = "help"
+	cmdExercises     = "exercises"
+	cmdAliasExercise = "alias_exercise"
 )
 
 // postZone is the zone a message's post time is read in, so a header without a
@@ -87,6 +94,7 @@ func Run(ctx context.Context, cfg config.BotConfig) error {
 		allowedID: cfg.AllowedTelegramUserID,
 	}
 	b.register()
+	b.setCommands(redact)
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -110,13 +118,27 @@ func Run(ctx context.Context, cfg config.BotConfig) error {
 // middleware must be installed first: telebot applies it at Handle time.
 func (b *Bot) register() {
 	b.tg.Use(b.allowOnly)
-	b.tg.Handle("/start", b.onStart)
-	b.tg.Handle("/help", b.onHelp)
-	b.tg.Handle("/exercises", b.onExercises)
-	b.tg.Handle("/replace_exercise", b.onReplaceExercise)
+	b.tg.Handle("/"+cmdStart, b.onStart)
+	b.tg.Handle("/"+cmdHelp, b.onHelp)
+	b.tg.Handle("/"+cmdExercises, b.onExercises)
+	b.tg.Handle("/"+cmdAliasExercise, b.onAliasExercise)
 	b.tg.Handle(tele.OnText, b.onText)
 	b.tg.Handle(tele.OnEdited, b.onEdited)
 	b.tg.Handle(tele.OnCallback, b.onCallback)
+}
+
+// setCommands publishes the command menu for the allowed user's private chat
+// only (a private chat ID equals the user ID). Failure is logged, not fatal.
+func (b *Bot) setCommands(redact func(string) string) {
+	cmds := []tele.Command{
+		{Text: cmdExercises, Description: plain(txtCmdExercises)},
+		{Text: cmdAliasExercise, Description: plain(txtCmdAliasExercise)},
+		{Text: cmdHelp, Description: plain(txtCmdHelp)},
+	}
+	err := b.tg.SetCommands(cmds, tele.CommandScope{Type: tele.CommandScopeChat, ChatID: b.allowedID})
+	if err != nil {
+		log.Warn().Str("error", redact(err.Error())).Msg("set bot commands failed")
+	}
 }
 
 // allowOnly drops, silently, every update that is not from the allowed user in

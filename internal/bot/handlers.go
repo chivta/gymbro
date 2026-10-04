@@ -82,42 +82,62 @@ func (b *Bot) onExercises(c tele.Context) error {
 	return b.sendLong(chatID, strings.Join(lines, "\n"))
 }
 
-// onReplaceExercise handles "/replace_exercise old name => new name".
-func (b *Bot) onReplaceExercise(c tele.Context) error {
-	chatID := c.Chat().ID
-	bad, correct, ok := parseReplaceArgs(c.Message().Payload)
+// onAliasExercise handles "/alias_exercise alias => existing exercise". On
+// success it re-renders the chat's most recent draft, since names may now
+// resolve through the new alias.
+func (b *Bot) onAliasExercise(c tele.Context) error {
+	chat := c.Chat()
+	alias, exercise, ok := parseAliasArgs(c.Message().Payload)
 	if !ok {
-		_, err := b.out.send(b.ctx, chatID, tr(txtReplaceUsage), nil, nil)
+		_, err := b.out.send(b.ctx, chat.ID, tr(txtAliasUsage), nil, nil)
 		return err
 	}
 
-	_, err := b.out.send(b.ctx, chatID, b.replace(bad, correct), nil, nil)
-	return err
+	report, done := b.alias(alias, exercise)
+	_, err := b.out.send(b.ctx, chat.ID, report, nil, nil)
+	if err != nil || !done {
+		return err
+	}
+	return b.refreshLatestDraft(chat)
 }
 
-// replace calls ReplaceExercise and returns the user-facing report.
-func (b *Bot) replace(bad, correct string) string {
+// refreshLatestDraft re-renders the preview of the chat's most recently touched
+// draft; no draft means nothing to do. A saved draft needs no more than the
+// re-render: the API merge already repointed its entries.
+func (b *Bot) refreshLatestDraft(chat *tele.Chat) error {
+	key, d, ok := b.drafts.latest(chat.ID)
+	if !ok {
+		return nil
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return b.refreshPreview(&tele.Message{ID: key.MsgID, Chat: chat}, d)
+}
+
+// alias calls ReplaceExercise and returns the user-facing report; done is true
+// when the alias was recorded.
+func (b *Bot) alias(alias, exercise string) (report string, done bool) {
 	userID, err := b.resolveUser()
 	if err != nil {
 		logAPIError("resolve_identity", err)
-		return apiErrorText(err)
+		return apiErrorText(err), false
 	}
 	ctx, cancel := b.apiCtx()
 	defer cancel()
-	resp, err := b.api.ReplaceExercise(ctx, userID, apiclient.ReplaceExerciseRequest{BadName: bad, CorrectName: correct})
+	resp, err := b.api.ReplaceExercise(ctx, userID, apiclient.ReplaceExerciseRequest{BadName: alias, CorrectName: exercise})
 	if err != nil {
-		logAPIError("replace_exercise", err)
-		return apiErrorText(err)
+		apiErr, isAPI := asAPIError(err)
+		if isAPI && apiErr.Code == apiclient.CodeExerciseNotFound {
+			return tr(txtAliasNotFound, exercise), false
+		}
+		logAPIError("alias_exercise", err)
+		return apiErrorText(err), false
 	}
 
-	switch resp.Outcome {
-	case apiclient.OutcomeRenamed:
-		return tr(txtReplaceRenamed, bad, resp.Exercise.Name)
-	case apiclient.OutcomeMerged:
-		return tr(txtReplaceMerged, bad, resp.Exercise.Name, bad)
-	default:
-		return tr(txtReplaceAliasOnly, bad, resp.Exercise.Name)
+	if resp.Outcome == apiclient.OutcomeMerged {
+		return tr(txtAliasMerged, alias, resp.Exercise.Name, alias), true
 	}
+	return tr(txtAliasAliasOnly, alias, resp.Exercise.Name), true
 }
 
 // onCallback handles the Save / pick / keep buttons (see callback.go).
@@ -200,10 +220,11 @@ func (b *Bot) onPick(cb *tele.Callback, userMsg *tele.Message, d *draft, data ca
 	if err != nil {
 		apiErr, isAPI := asAPIError(err)
 		// Already resolved by someone else: just redraw.
-		if isAPI && (apiErr.Code == apiclient.CodeBadNameIsAlias || apiErr.Code == apiclient.CodeSameExercise) {
+		if isAPI && (apiErr.Code == apiclient.CodeBadNameIsAlias || apiErr.Code == apiclient.CodeSameExercise ||
+			apiErr.Code == apiclient.CodeExerciseNotFound) {
 			return b.staleReply(cb, userMsg, d, txtCbDone)
 		}
-		logAPIError("replace_exercise", err)
+		logAPIError("alias_exercise", err)
 		return b.out.answer(b.ctx, cb, apiErrorPlain(err), true)
 	}
 

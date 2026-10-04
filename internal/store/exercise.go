@@ -40,7 +40,6 @@ const (
 	insertExercise = `INSERT INTO exercises (user_id, name) VALUES ($1, $2)
 		ON CONFLICT (user_id, name_key) DO NOTHING RETURNING id`
 
-	renameExercise = `UPDATE exercises SET name = $2 WHERE id = $1`
 	repointEntries = `UPDATE workout_exercises SET exercise_id = $2 WHERE exercise_id = $1`
 	repointAliases = `UPDATE exercise_aliases SET exercise_id = $2 WHERE exercise_id = $1`
 	deleteExercise = `DELETE FROM exercises WHERE id = $1`
@@ -72,10 +71,12 @@ func (s *Store) ListExercises(ctx context.Context, userID int64) ([]apiclient.Ex
 }
 
 // ReplaceExercise fixes a typo: it makes badName an alias of correctName and moves
-// everything that used the bad exercise over to the correct one (rename when the
-// correct exercise does not exist yet, merge when both do, alias only when the bad
-// name is not an exercise). Returns ErrSameExercise when both names normalize to
-// one key, ErrBadNameIsAlias when badName is already an alias.
+// everything that used the bad exercise over to the correct one (merge when the
+// bad name is an exercise, alias only when it is not). correctName must resolve to
+// an existing exercise, through an alias first, then an exercise key. Returns
+// ErrSameExercise when both names normalize to one key, ErrBadNameIsAlias when
+// badName is already an alias, ErrExerciseNotFound when correctName resolves to
+// nothing. All checks run before anything is changed.
 func (s *Store) ReplaceExercise(ctx context.Context, userID int64, badName, correctName string) (apiclient.ReplaceExerciseResponse, error) {
 	var resp apiclient.ReplaceExerciseResponse
 
@@ -107,11 +108,6 @@ func (s *Store) ReplaceExercise(ctx context.Context, userID int64, badName, corr
 			return fmt.Errorf("check bad alias: %w", err)
 		}
 
-		badID, badFound, err := lockOne(ctx, tx, lockExerciseByName, userID, badName)
-		if err != nil {
-			return fmt.Errorf("find bad exercise: %w", err)
-		}
-
 		// The correct name may itself be an alias; then it means the alias target.
 		correctID, correctFound, err := lockOne(ctx, tx, lockExerciseByAlias, userID, correctName)
 		if err != nil {
@@ -123,13 +119,20 @@ func (s *Store) ReplaceExercise(ctx context.Context, userID int64, badName, corr
 				return fmt.Errorf("find correct exercise: %w", err)
 			}
 		}
-		if badFound && correctFound && badID == correctID {
+		if !correctFound {
+			return apperr.ErrExerciseNotFound
+		}
+
+		badID, badFound, err := lockOne(ctx, tx, lockExerciseByName, userID, badName)
+		if err != nil {
+			return fmt.Errorf("find bad exercise: %w", err)
+		}
+		if badFound && badID == correctID {
 			// correctName is an alias of the bad exercise: same exercise.
 			return apperr.ErrSameExercise
 		}
 
-		switch {
-		case badFound && correctFound:
+		if badFound {
 			resp.Outcome = apiclient.OutcomeMerged
 			_, err = tx.Exec(ctx, repointEntries, badID, correctID)
 			if err != nil {
@@ -143,22 +146,8 @@ func (s *Store) ReplaceExercise(ctx context.Context, userID int64, badName, corr
 			if err != nil {
 				return fmt.Errorf("delete bad exercise: %w", err)
 			}
-		case badFound:
-			resp.Outcome = apiclient.OutcomeRenamed
-			correctID = badID
-			_, err = tx.Exec(ctx, renameExercise, badID, correctName)
-			if err != nil {
-				return fmt.Errorf("rename exercise: %w", err)
-			}
-		case correctFound:
+		} else {
 			resp.Outcome = apiclient.OutcomeAliasOnly
-		default:
-			// An alias must point at an exercise, so create the correct one.
-			resp.Outcome = apiclient.OutcomeAliasOnly
-			correctID, _, err = ensureExercise(ctx, tx, userID, correctName)
-			if err != nil {
-				return fmt.Errorf("create correct exercise: %w", err)
-			}
 		}
 
 		_, err = tx.Exec(ctx, insertAlias, userID, correctID, badName)

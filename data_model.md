@@ -57,7 +57,7 @@ When a workout is saved, each exercise name is resolved in this order:
 2. Otherwise, if it matches an existing exercise's key, the entry points to that exercise.
 3. Otherwise, a new exercise is created with that name. The user is told about newly created names after the save so typos can be fixed immediately.
 
-Fixing a typo is a replace operation from a bad name to a correct name. It does two things: it repoints every entry that referenced the bad exercise to the correct one (if the correct one doesn't exist, this is effectively a rename) and removes the bad exercise, and it records the bad name as an alias of the correct exercise. The alias is what makes the fix permanent. Without it, re-saving an old message that still contains the typo would recreate the bad exercise.
+Fixing a typo is a replace operation from a bad name to a correct name. The correct name must resolve to an existing exercise of the user, through an alias first, then an exercise key; otherwise the operation is rejected and nothing changes. If the bad name is an exercise, the operation repoints every entry that referenced it to the correct exercise and removes it; if it is not, there is nothing to repoint. In both cases it records the bad name as an alias of the correct exercise. The alias is what makes the fix permanent. Without it, re-saving an old message that still contains the typo would recreate the bad exercise.
 
 Because every entry keeps the name as written, a wrong merge can be undone by finding entries whose written name differs from their exercise's name.
 

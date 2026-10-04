@@ -78,6 +78,26 @@ func (c *draftCache) get(key draftKey) (*draft, bool) {
 	return e.d, true
 }
 
+// latest returns the key and draft touched most recently in a chat, refreshing
+// nothing. ok is false when the chat has no live draft.
+func (c *draftCache) latest(chatID int64) (draftKey, *draft, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := c.now()
+	var bestKey draftKey
+	var best draftEntry
+	found := false
+	for k, e := range c.items {
+		if k.ChatID != chatID || now.Sub(e.touched) > c.ttl {
+			continue
+		}
+		if !found || e.touched.After(best.touched) {
+			bestKey, best, found = k, e, true
+		}
+	}
+	return bestKey, best.d, found
+}
+
 func (c *draftCache) put(key draftKey, d *draft) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

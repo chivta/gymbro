@@ -4,18 +4,19 @@ package apiclient
 
 // Error codes returned by the API as {"error": "<code>"}.
 const (
-	CodeInvalidRequest = "invalid_request"
-	CodeUnauthorized   = "unauthorized"
-	CodeUserNotFound   = "user_not_found"
-	CodeSameExercise   = "same_exercise"
-	CodeBadNameIsAlias = "bad_name_is_alias"
-	CodeConflict       = "conflict"
-	CodeInternal       = "internal"
+	CodeInvalidRequest   = "invalid_request"
+	CodeUnauthorized     = "unauthorized"
+	CodeUserNotFound     = "user_not_found"
+	CodeSameExercise     = "same_exercise"
+	CodeExerciseNotFound = "exercise_not_found"
+	CodeBadNameIsAlias   = "bad_name_is_alias"
+	CodeConflict         = "conflict"
+	CodeInternal         = "internal"
 )
 
-// Outcomes of a replace operation.
+// Outcomes of a replace operation: merged when the bad name was an exercise,
+// alias_only when it was not and only the alias was recorded.
 const (
-	OutcomeRenamed   = "renamed"
 	OutcomeMerged    = "merged"
 	OutcomeAliasOnly = "alias_only"
 )

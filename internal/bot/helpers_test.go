@@ -10,7 +10,7 @@ import (
 	"gymbro/internal/parser"
 )
 
-func TestParseReplaceArgs(t *testing.T) {
+func TestParseAliasArgs(t *testing.T) {
 	tests := []struct {
 		name         string
 		in           string
@@ -31,7 +31,7 @@ func TestParseReplaceArgs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			bad, correct, ok := parseReplaceArgs(tt.in)
+			bad, correct, ok := parseAliasArgs(tt.in)
 			if ok != tt.ok || bad != tt.bad || correct != tt.correct {
 				t.Fatalf("got (%q, %q, %v), want (%q, %q, %v)", bad, correct, ok, tt.bad, tt.correct, tt.ok)
 			}
@@ -187,5 +187,34 @@ func TestDraftCacheTTL(t *testing.T) {
 	}
 	if cache.len() != 0 {
 		t.Errorf("lazy eviction left %d drafts", cache.len())
+	}
+}
+
+func TestDraftCacheLatest(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	cache := newDraftCache(48*time.Hour, func() time.Time { return now })
+	d1, d2, other := &draft{}, &draft{}, &draft{}
+	k1, k2 := draftKey{1, 1}, draftKey{1, 2}
+
+	if _, _, ok := cache.latest(1); ok {
+		t.Fatal("empty cache returned a draft")
+	}
+	cache.put(k1, d1)
+	now = now.Add(time.Hour)
+	cache.put(k2, d2)
+	now = now.Add(time.Hour)
+	cache.put(draftKey{2, 3}, other)
+
+	if key, d, ok := cache.latest(1); !ok || key != k2 || d != d2 {
+		t.Fatalf("latest = (%v, %p, %v), want k2", key, d, ok)
+	}
+	now = now.Add(time.Hour)
+	cache.get(k1) // touching k1 makes it the latest
+	if key, _, _ := cache.latest(1); key != k1 {
+		t.Fatalf("latest after touch = %v, want k1", key)
+	}
+	now = now.Add(49 * time.Hour)
+	if _, _, ok := cache.latest(1); ok {
+		t.Fatal("expired drafts returned")
 	}
 }

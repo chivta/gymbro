@@ -48,10 +48,14 @@ const (
 	txtExercisesEmpty = "exercises_empty"
 	txtExerciseAlias  = "exercise_alias"
 
-	txtReplaceUsage     = "replace_usage"
-	txtReplaceRenamed   = "replace_renamed"
-	txtReplaceMerged    = "replace_merged"
-	txtReplaceAliasOnly = "replace_alias_only"
+	txtAliasUsage     = "alias_usage"
+	txtAliasMerged    = "alias_merged"
+	txtAliasAliasOnly = "alias_alias_only"
+	txtAliasNotFound  = "alias_not_found"
+
+	txtCmdExercises     = "cmd_exercises"
+	txtCmdAliasExercise = "cmd_alias_exercise"
+	txtCmdHelp          = "cmd_help"
 
 	txtAPIFailure = "api_failure"
 )
@@ -98,15 +102,19 @@ var texts = map[string]string{
 	txtCbDone:         "Done.",
 
 	txtNewExercisesHead: "<b>New exercises created:</b>",
-	txtNewExerciseItem:  "• %s: <code>/replace_exercise %s =&gt; correct name</code>",
+	txtNewExerciseItem:  "• %s: <code>/alias_exercise %s =&gt; existing exercise</code>",
 
 	txtExercisesEmpty: "No exercises yet.",
 	txtExerciseAlias:  "%s (%s)",
 
-	txtReplaceUsage:     "Usage: <code>/replace_exercise old name =&gt; new name</code>",
-	txtReplaceRenamed:   "Renamed %s to %s.",
-	txtReplaceMerged:    "Merged %s into %s; %s is now an alias.",
-	txtReplaceAliasOnly: "%s is now an alias of %s.",
+	txtAliasUsage:     "Usage: <code>/alias_exercise alias =&gt; existing exercise</code>",
+	txtAliasMerged:    "Merged %s into %s; %s is now an alias.",
+	txtAliasAliasOnly: "%s is now an alias of %s.",
+	txtAliasNotFound:  "No exercise named %s. Check /exercises.",
+
+	txtCmdExercises:     "List your exercises",
+	txtCmdAliasExercise: "Make a name an alias of an exercise",
+	txtCmdHelp:          "Show help",
 
 	txtAPIFailure: "API error (%s): %s",
 
@@ -118,15 +126,16 @@ var texts = map[string]string{
 	prefixParseReason + string(parser.ReasonBadToken):  "This token is not a valid set (use W-R or -R).",
 	prefixParseReason + string(parser.ReasonZeroReps):  "A set must have at least 1 rep.",
 
-	prefixAPICode + apiclient.CodeInvalidRequest: "The API rejected the request.",
-	prefixAPICode + apiclient.CodeUnauthorized:   "The API rejected the bot's secret.",
-	prefixAPICode + apiclient.CodeUserNotFound:   "The user was not found.",
-	prefixAPICode + apiclient.CodeSameExercise:   "Both names are already the same exercise.",
-	prefixAPICode + apiclient.CodeBadNameIsAlias: "The old name is already an alias.",
-	prefixAPICode + apiclient.CodeConflict:       "Conflict with existing data.",
-	prefixAPICode + apiclient.CodeInternal:       "Internal API error.",
-	prefixAPICode + apiCodeUnavailable:           "The API is unreachable.",
-	prefixAPICode + apiCodeUnknown:               "Unexpected API response.",
+	prefixAPICode + apiclient.CodeInvalidRequest:   "The API rejected the request.",
+	prefixAPICode + apiclient.CodeUnauthorized:     "The API rejected the bot's secret.",
+	prefixAPICode + apiclient.CodeUserNotFound:     "The user was not found.",
+	prefixAPICode + apiclient.CodeSameExercise:     "Both names are already the same exercise.",
+	prefixAPICode + apiclient.CodeExerciseNotFound: "No such exercise. Check /exercises.",
+	prefixAPICode + apiclient.CodeBadNameIsAlias:   "The old name is already an alias.",
+	prefixAPICode + apiclient.CodeConflict:         "Conflict with existing data.",
+	prefixAPICode + apiclient.CodeInternal:         "Internal API error.",
+	prefixAPICode + apiCodeUnavailable:             "The API is unreachable.",
+	prefixAPICode + apiCodeUnknown:                 "Unexpected API response.",
 }
 
 const helpBody = "Send a workout like:\n" +
@@ -135,7 +144,7 @@ const helpBody = "Send a workout like:\n" +
 	"підтягування 82-9 -9</pre>\n" +
 	"Edit the message to fix it, press Save when the preview is right.\n\n" +
 	"/exercises - list your exercises\n" +
-	"/replace_exercise old name =&gt; new name - fix a misspelled exercise\n" +
+	"/alias_exercise alias =&gt; existing exercise - make a name an alias of an existing exercise\n" +
 	"/help - this text"
 
 // rawHTML marks a value that is already valid HTML, so tr does not escape it.
