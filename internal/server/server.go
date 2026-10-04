@@ -19,6 +19,8 @@ import (
 const (
 	readHeaderTimeout = 10 * time.Second
 	shutdownTimeout   = 15 * time.Second
+	// healthPath is probed by Kubernetes; unauthenticated, 503 when the database is unreachable.
+	healthPath = "/health"
 )
 
 // Run wires the dependencies, serves HTTP and blocks until ctx is cancelled,
@@ -39,6 +41,13 @@ func Run(ctx context.Context, cfg config.Config) error {
 
 	router := gin.New()
 	router.Use(gin.Recovery(), authenticate(cfg.APISecret, st))
+	router.GET(healthPath, func(c *gin.Context) {
+		if db.Ping(c.Request.Context()) != nil {
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		c.Status(http.StatusOK)
+	})
 	v1 := router.Group("/v1")
 	h.register(v1.Group("", requireService()), v1.Group("", requireUserAccess()))
 	authGroup := router.Group("/auth")

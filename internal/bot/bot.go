@@ -106,7 +106,11 @@ func Run(ctx context.Context, cfg config.BotConfig) error {
 	b.setCommands(redact)
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		serveHealth(ctx, healthAddr)
+	}()
 	go func() {
 		defer wg.Done()
 		b.drafts.runSweeper(ctx, draftSweepInterval)
