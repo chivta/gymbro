@@ -1,0 +1,134 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/chivta/gymbro
+  SHA: ${{ github.event.workflow_run.head_sha }}
+
+jobs:
+  # Decides which images need a build: a component is built when its files
+  # changed since the tag currently pinned in k8s/kustomization.yaml.
+  changes:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.diff.outputs.api }}
+      bot: ${{ steps.diff.outputs.bot }}
+      web: ${{ steps.diff.outputs.web }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+          fetch-depth: 0
+      - id: diff
+        run: |
+          paths_api="cmd/api internal go.mod go.sum Dockerfile"
+          paths_bot="cmd/bot internal go.mod go.sum Dockerfile"
+          paths_web="web"
+          for c in api bot web; do
+            old=$(awk -v img="${IMAGE_PREFIX}/${c}" '$0 ~ "name: "img"$" {f=1; next} f && /newTag:/ {print $2; exit} /^- name:/ {f=0}' k8s/kustomization.yaml)
+            paths_var="paths_${c}"
+            if [ -z "$old" ] || [ "$old" = placeholder ] || [ "$old" = "$SHA" ] || ! git cat-file -e "${old}^{commit}" 2>/dev/null; then
+              build=true
+            elif git diff --quiet "$old" "$SHA" -- ${!paths_var}; then
+              build=false
+            else
+              build=true
+            fi
+            echo "${c}=${build}" >> "$GITHUB_OUTPUT"
+            echo "${c}: ${build} (pinned ${old:-none})"
+          done
+
+  build:
+    needs: changes
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - component: api
+            context: .
+            build_args: CMD=api
+          - component: bot
+            context: .
+            build_args: CMD=bot
+          - component: web
+            context: web
+            build_args: ""
+    steps:
+      - name: Skip unchanged
+        id: gate
+        run: echo "build=${{ needs.changes.outputs[matrix.component] }}" >> "$GITHUB_OUTPUT"
+      - if: steps.gate.outputs.build == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+      - if: steps.gate.outputs.build == 'true'
+        uses: docker/setup-buildx-action@v4
+      - if: steps.gate.outputs.build == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - if: steps.gate.outputs.build == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          target: production
+          build-args: ${{ matrix.build_args }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.component }}:${{ env.SHA }}
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.component }}:latest
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+
+  deploy:
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.api == 'true' || needs.changes.outputs.bot == 'true' || needs.changes.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      # Refuse to pin if main moved past the tested commit: a newer run owns the
+      # deploy, and this check also keeps the deploy commit from looping.
+      - name: Head guard
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+            echo "main is at $(git rev-parse HEAD), not $SHA; skipping"
+            exit 1
+          fi
+      - name: Pin images
+        working-directory: k8s
+        run: |
+          built=""
+          for c in api bot web; do
+            case "$c" in
+              api) b="${{ needs.changes.outputs.api }}" ;;
+              bot) b="${{ needs.changes.outputs.bot }}" ;;
+              web) b="${{ needs.changes.outputs.web }}" ;;
+            esac
+            if [ "$b" = true ]; then
+              kustomize edit set image "${IMAGE_PREFIX}/${c}:${SHA}"
+              built="${built:+$built }${c}"
+            fi
+          done
+          echo "BUILT=${built}" >> "$GITHUB_ENV"
+      - name: Commit
+        run: |
+          git diff --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "deploy: ${BUILT} ${SHA}"
+          git push
