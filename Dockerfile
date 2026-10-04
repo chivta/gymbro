@@ -17,6 +17,8 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /app-bin ./cmd/${CMD}
 
 # Production: binary only, non-root.
 FROM scratch AS production
+# CA bundle for outbound HTTPS (the bot calls api.telegram.org).
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app-bin /app-bin
 USER 65534:65534
 ENTRYPOINT ["/app-bin"]
