@@ -5,3 +5,4 @@ scripts/__pycache__/
 scripts/parsed_*.json
 web/node_modules
 web/dist
+k8s/secrets.yaml

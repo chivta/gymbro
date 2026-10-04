@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bot
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  # RWO volume, and two pollers on one token conflict: never run two pods.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: bot
+  template:
+    metadata:
+      labels:
+        app: bot
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+      containers:
+        - name: bot
+          image: ghcr.io/chivta/gymbro/bot:placeholder
+          envFrom:
+            - secretRef:
+                name: app-secrets
+          env:
+            - name: API_BASE_URL
+              value: http://api:8090
+            - name: ALLOWED_TELEGRAM_USER_ID
+              value: "685751256"
+            - name: BOT_DB_PATH
+              value: /data/bot.db
+          ports:
+            - name: health
+              containerPort: 8081
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet: {path: /health, port: health}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: health}
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: bot-data
+        - name: tmp
+          emptyDir: {}
