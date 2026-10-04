@@ -15,22 +15,16 @@ const (
 	txtStart = "start"
 	txtHelp  = "help"
 
-	txtHeadDate     = "head_date"
-	txtHeadType     = "head_type"
-	txtHeadIntake   = "head_intake"
-	txtHeadNote     = "head_note"
-	txtEntry        = "entry"
-	txtMarkNew      = "mark_new"
-	txtMarkSuspect  = "mark_suspect"
-	txtMarkKept     = "mark_kept"
-	txtSuspectsHead = "suspects_head"
-	txtSuspectItem  = "suspect_item"
-	txtNeedResolve  = "need_resolve"
-	txtSavedLine    = "saved_line"
+	txtReady            = "ready"
+	txtNewNames         = "new_names"
+	txtSuspectsHead     = "suspects_head"
+	txtSuspectItem      = "suspect_item"
+	txtNeedResolve      = "need_resolve"
+	txtPlannedUnsavable = "planned_unsavable"
+	txtSavedLine        = "saved_line"
 
-	txtParseFailed = "parse_failed"
-	txtParseLine   = "parse_line"
-	txtParseToken  = "parse_token"
+	txtParseFailed     = "parse_failed"
+	txtParseFailedLine = "parse_failed_line"
 
 	txtBtnSave = "btn_save"
 	txtBtnPick = "btn_pick"
@@ -40,6 +34,7 @@ const (
 	txtCbStale        = "cb_stale"
 	txtCbSaved        = "cb_saved"
 	txtCbCannotSave   = "cb_cannot_save"
+	txtCbPlanned      = "cb_planned"
 	txtCbDone         = "cb_done"
 
 	txtNewExercisesHead = "new_exercises_head"
@@ -73,23 +68,17 @@ var texts = map[string]string{
 	txtStart: "Hi! Send a workout log and I will preview it, then press Save.\n\n" + helpBody,
 	txtHelp:  helpBody,
 
-	txtHeadDate:    "<b>Date:</b> %s",
-	txtHeadType:    "<b>Type:</b> %s",
-	txtHeadIntake:  "<b>Intake:</b> %s kcal, %s g protein",
-	txtHeadNote:    "<b>Note:</b> %s",
-	txtEntry:       "• %s: %s%s",
-	txtMarkNew:     " [new]",
-	txtMarkSuspect: " [new, unconfirmed]",
-	txtMarkKept:    " [new, kept]",
+	txtReady:    "Ready to save.",
+	txtNewNames: "New: %s",
 
-	txtSuspectsHead: "\n<b>Possible misspellings:</b>",
-	txtSuspectItem:  "• %s: similar to %s",
-	txtNeedResolve:  "\nPick the correct name or keep it as new to enable Save.",
-	txtSavedLine:    "\n<b>Saved</b> (workout #%d). Edit the message and press Save again to update it.",
+	txtSuspectsHead:     "Possible misspellings:",
+	txtSuspectItem:      "• %s: similar to %s",
+	txtNeedResolve:      "Pick the correct name or keep it as new to enable Save.",
+	txtPlannedUnsavable: "Unfinished sets (<code>W-</code>), cannot save yet.",
+	txtSavedLine:        "<b>Saved</b> (workout #%d).",
 
-	txtParseFailed: "<b>Cannot parse the message.</b>",
-	txtParseLine:   "Line %d: <code>%s</code>",
-	txtParseToken:  "Token: <code>%s</code>",
+	txtParseFailed:     "<b>Cannot parse:</b> %s",
+	txtParseFailedLine: "<b>Line %d</b> <code>%s</code>: %s",
 
 	txtBtnSave: "Save",
 	txtBtnPick: "%s → %s",
@@ -99,6 +88,7 @@ var texts = map[string]string{
 	txtCbStale:        "The suggestions changed, refreshed.",
 	txtCbSaved:        "Saved.",
 	txtCbCannotSave:   "Cannot save yet, refreshed.",
+	txtCbPlanned:      "Unfinished sets, cannot save yet.",
 	txtCbDone:         "Done.",
 
 	txtNewExercisesHead: "<b>New exercises created:</b>",
@@ -123,7 +113,7 @@ var texts = map[string]string{
 	prefixParseReason + string(parser.ReasonBadIntake): "The intake numbers in parentheses are too large.",
 	prefixParseReason + string(parser.ReasonNoSets):    "The exercise line has no sets.",
 	prefixParseReason + string(parser.ReasonNoName):    "The exercise line has no name.",
-	prefixParseReason + string(parser.ReasonBadToken):  "This token is not a valid set (use W-R or -R).",
+	prefixParseReason + string(parser.ReasonBadToken):  "This token is not a valid set (use W-R, -R or W-).",
 	prefixParseReason + string(parser.ReasonZeroReps):  "A set must have at least 1 rep.",
 
 	prefixAPICode + apiclient.CodeInvalidRequest:   "The API rejected the request.",

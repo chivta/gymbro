@@ -2,13 +2,11 @@ package bot
 
 import (
 	"html"
-	"strconv"
 	"strings"
 
 	tele "gopkg.in/telebot.v4"
 
 	"gymbro/internal/parser"
-	"gymbro/internal/workout"
 )
 
 const dateLayout = "2006-01-02"
@@ -26,43 +24,29 @@ func textPreview(text string) preview {
 	return preview{Parts: splitMessage(text, maxMessageRunes)}
 }
 
-// renderParseError shows where and why parsing failed. No buttons.
+// renderParseError shows the first line that failed and why, in one line. No buttons.
 func renderParseError(perr *parser.Error) preview {
-	lines := []string{tr(txtParseFailed)}
-	if perr.Line > 0 {
-		lines = append(lines, tr(txtParseLine, perr.Line, perr.Text))
+	reason := rawHTML(parseReasonText(perr.Reason))
+	if perr.Line == 0 {
+		return textPreview(tr(txtParseFailed, reason))
 	}
-	if perr.Token != "" {
-		lines = append(lines, tr(txtParseToken, perr.Token))
-	}
-	lines = append(lines, parseReasonText(perr.Reason))
-	return textPreview(strings.Join(lines, "\n"))
+	return textPreview(tr(txtParseFailedLine, perr.Line, perr.Text, reason))
 }
 
-// renderWorkout shows a parsed workout with new-name markers, the suspected
-// misspellings and their buttons, and Save once nothing is unresolved.
+// renderWorkout is a short status of a parsed workout: which names are new, the
+// suspected misspellings with their buttons, and Save once nothing is unresolved
+// and no set is planned. The workout itself is not echoed back.
 // msgID is the user's message ID, used in callback data.
 func renderWorkout(w parser.Workout, names []nameInfo, kept map[string]bool, savedID int64, msgID int) preview {
-	byKey := make(map[string]nameInfo, len(names))
+	var lines []string
+	var plainNew []string
 	for _, n := range names {
-		byKey[n.Key] = n
+		if !n.Known && (!n.suspected() || kept[n.Key]) {
+			plainNew = append(plainNew, html.EscapeString(n.Name))
+		}
 	}
-
-	lines := []string{tr(txtHeadDate, w.Date.Format(dateLayout))}
-	if w.Type != "" {
-		lines = append(lines, tr(txtHeadType, w.Type))
-	}
-	if w.Kcal != nil && w.Protein != nil {
-		lines = append(lines, tr(txtHeadIntake, strconv.Itoa(*w.Kcal), strconv.Itoa(*w.Protein)))
-	}
-	if w.Note != "" {
-		lines = append(lines, tr(txtHeadNote, w.Note))
-	}
-	lines = append(lines, "")
-
-	for _, e := range w.Entries {
-		info := byKey[workout.NameKey(e.Name)]
-		lines = append(lines, tr(txtEntry, e.Name, formatSets(e.Sets), marker(info, kept)))
+	if len(plainNew) > 0 {
+		lines = append(lines, tr(txtNewNames, rawHTML(strings.Join(plainNew, ", "))))
 	}
 
 	var suspects []suspectRef
@@ -89,16 +73,22 @@ func renderWorkout(w parser.Workout, names []nameInfo, kept map[string]bool, sav
 		rows = append(rows, []tele.InlineButton{{Text: plain(txtBtnKeep, n.Name), Data: keep.encode()}})
 	}
 
+	if w.Planned() {
+		lines = append(lines, tr(txtPlannedUnsavable))
+	}
 	if len(pending) > 0 {
 		lines = append(lines, tr(txtSuspectsHead))
 		lines = append(lines, pending...)
 		lines = append(lines, tr(txtNeedResolve))
-	} else {
+	} else if !w.Planned() {
 		save := callbackData{Kind: cbSave, MsgID: msgID}
 		rows = append(rows, []tele.InlineButton{{Text: plain(txtBtnSave), Data: save.encode()}})
 	}
 	if savedID != 0 {
 		lines = append(lines, tr(txtSavedLine, savedID))
+	}
+	if len(lines) == 0 {
+		lines = append(lines, tr(txtReady))
 	}
 
 	p := preview{Parts: splitMessage(strings.Join(lines, "\n"), maxMessageRunes), Suspects: suspects}
@@ -106,26 +96,4 @@ func renderWorkout(w parser.Workout, names []nameInfo, kept map[string]bool, sav
 		p.Markup = &tele.ReplyMarkup{InlineKeyboard: rows}
 	}
 	return p
-}
-
-func marker(info nameInfo, kept map[string]bool) string {
-	switch {
-	case info.Known:
-		return ""
-	case info.suspected() && kept[info.Key]:
-		return tr(txtMarkKept)
-	case info.suspected():
-		return tr(txtMarkSuspect)
-	default:
-		return tr(txtMarkNew)
-	}
-}
-
-// formatSets renders sets as "60×10, 60×9".
-func formatSets(sets []parser.Set) string {
-	parts := make([]string, len(sets))
-	for i, s := range sets {
-		parts[i] = s.Weight + "×" + strconv.Itoa(s.Reps)
-	}
-	return strings.Join(parts, ", ")
 }

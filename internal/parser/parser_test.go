@@ -104,6 +104,12 @@ func TestParse(t *testing.T) {
 			want: Workout{Date: day(2027, 12, 31), Entries: []Entry{{"жим", sets("60", 10)}}}},
 		{name: "leap day with explicit year", text: "29.02.2024\nжим 60-10", want: Workout{
 			Date: day(2024, 2, 29), Entries: []Entry{{"жим", sets("60", 10)}}}},
+		{name: "planned set alone", text: "03.10\nрозведення гантелей 20-", want: Workout{
+			Date: day(2026, 10, 3), Entries: []Entry{{"розведення гантелей", sets("20", 0)}}}},
+		{name: "planned mixed with done", text: "03.10\nрозведення гантелей 20-12 20-", want: Workout{
+			Date: day(2026, 10, 3), Entries: []Entry{{"розведення гантелей", sets("20", 12, "20", 0)}}}},
+		{name: "planned weight carries to bare reps", text: "03.10\nжим 20- -8", want: Workout{
+			Date: day(2026, 10, 3), Entries: []Entry{{"жим", sets("20", 0, "20", 8)}}}},
 		{name: "header only", text: "03.10 рест", want: Workout{Date: day(2026, 10, 3), Type: "рест"}},
 	}
 	for _, tt := range tests {
@@ -146,7 +152,9 @@ func TestParseErrors(t *testing.T) {
 		{"bad token after sets", "03.10\nжим 60-10 abc -9", 2, "abc", ReasonBadToken},
 		{"three decimals is not a set", "03.10\nжим 60-10 13.555-8", 2, "13.555-8", ReasonBadToken},
 		{"comma decimal", "03.10\nжим 60-10 13,5-8", 2, "13,5-8", ReasonBadToken},
-		{"weight without reps", "03.10\nжим 60-10 50-", 2, "50-", ReasonBadToken},
+		{"bare dash after sets", "03.10\nжим 60-10 -", 2, "-", ReasonBadToken},
+		{"bare dash alone has no sets", "03.10\nжим -", 2, "", ReasonNoSets},
+		{"explicit zero after planned", "03.10\nжим 20- 20-0", 2, "20-0", ReasonZeroReps},
 		{"zero reps", "03.10\nжим 60-10\nтяга 40-0", 3, "40-0", ReasonZeroReps},
 		{"zero reps bare", "03.10\nжим 60-10 -0", 2, "-0", ReasonZeroReps},
 	}
@@ -160,6 +168,30 @@ func TestParseErrors(t *testing.T) {
 			if pe.Reason != tt.want || pe.Line != tt.line || pe.Token != tt.token {
 				t.Errorf("got line=%d token=%q reason=%s, want line=%d token=%q reason=%s",
 					pe.Line, pe.Token, pe.Reason, tt.line, tt.token, tt.want)
+			}
+		})
+	}
+}
+
+func TestWorkoutPlanned(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{"all done", "03.10\nжим 60-10 -9", false},
+		{"no entries", "03.10 рест", false},
+		{"planned set", "03.10\nжим 60-10\nтяга 20-", true},
+		{"planned in the middle", "03.10\nжим 60-10 50- -8", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w, err := Parse(tt.text, posted)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got := w.Planned(); got != tt.want {
+				t.Errorf("Planned() = %v, want %v", got, tt.want)
 			}
 		})
 	}

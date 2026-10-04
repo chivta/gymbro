@@ -235,7 +235,7 @@ func (b *Bot) onPick(cb *tele.Callback, userMsg *tele.Message, d *draft, data ca
 	return b.refreshPreview(userMsg, d)
 }
 
-// onSave re-parses the cached text and re-checks the names against the API:
+// onSave re-parses the cached text (refusing planned sets) and re-checks the names against the API:
 // nothing from render time is trusted. On success the preview keeps its
 // content and Save button and gains a "saved" line (an edit clears the line,
 // and Save can be pressed again: same source_ref, so the API updates the workout).
@@ -243,6 +243,9 @@ func (b *Bot) onSave(cb *tele.Callback, userMsg *tele.Message, d *draft) error {
 	w, err := parser.Parse(d.Text, d.Posted)
 	if err != nil {
 		return b.staleReply(cb, userMsg, d, txtCbCannotSave)
+	}
+	if w.Planned() {
+		return b.staleReply(cb, userMsg, d, txtCbPlanned)
 	}
 	names, err := b.loadNames(w)
 	if err != nil {

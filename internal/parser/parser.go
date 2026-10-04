@@ -58,8 +58,22 @@ type Entry struct {
 	Sets []Set
 }
 
+// Planned reports whether any set is planned (Reps == 0). Such a workout
+// parses and previews but must never be saved.
+func (w Workout) Planned() bool {
+	for _, e := range w.Entries {
+		for _, s := range e.Sets {
+			if s.Reps == 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Set is one set. Weight is the decimal string as written ("60", "13.5"),
-// never a float, so it round-trips exactly.
+// never a float, so it round-trips exactly. Reps == 0 means the set is planned
+// (written `W-`, not done yet); the parser rejects an explicit 0.
 type Set struct {
 	Weight string
 	Reps   int
@@ -68,10 +82,20 @@ type Set struct {
 var (
 	dateRe   = regexp.MustCompile(`^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?$`)
 	intakeRe = regexp.MustCompile(`\(\s*(\d+)\s*/\s*(\d+)(?:\s[^)]*)?\)`)
-	setRe    = regexp.MustCompile(`^(\d+(?:\.\d{1,2})?)?-(\d+)$`)
+	setRe    = regexp.MustCompile(`^(\d+(?:\.\d{1,2})?)?-(\d*)$`)
 )
 
 const defaultWeight = "0"
+
+// matchSet splits a set token into weight and reps (either may be empty).
+// A bare "-" has neither and is not a set token.
+func matchSet(tok string) (weight, reps string, ok bool) {
+	m := setRe.FindStringSubmatch(tok)
+	if m == nil || (m[1] == "" && m[2] == "") {
+		return "", "", false
+	}
+	return m[1], m[2], true
+}
 
 // Parse parses a whole message. posted supplies the year for a header date
 // without one. Parsing is all-or-nothing: any problem returns a *Error.
@@ -174,7 +198,8 @@ func parseExercise(line string) (Entry, *Error) {
 	fields := strings.Fields(line)
 	first := -1
 	for i, f := range fields {
-		if setRe.MatchString(f) {
+		_, _, ok := matchSet(f)
+		if ok {
 			first = i
 			break
 		}
@@ -185,23 +210,26 @@ func parseExercise(line string) (Entry, *Error) {
 	if first == 0 {
 		return Entry{}, &Error{Token: fields[0], Reason: ReasonNoName}
 	}
-
 	entry := Entry{Name: strings.Join(fields[:first], " ")}
 	weight := defaultWeight
 	for _, tok := range fields[first:] {
-		m := setRe.FindStringSubmatch(tok)
-		if m == nil {
+		w, repsText, ok := matchSet(tok)
+		if !ok {
 			return Entry{}, &Error{Token: tok, Reason: ReasonBadToken}
 		}
-		reps, err := strconv.Atoi(m[2])
-		if err != nil {
-			return Entry{}, &Error{Token: tok, Reason: ReasonBadToken}
+		reps := 0 // "W-" with no reps is a planned set
+		if repsText != "" {
+			var err error
+			reps, err = strconv.Atoi(repsText)
+			if err != nil {
+				return Entry{}, &Error{Token: tok, Reason: ReasonBadToken}
+			}
+			if reps == 0 {
+				return Entry{}, &Error{Token: tok, Reason: ReasonZeroReps}
+			}
 		}
-		if reps == 0 {
-			return Entry{}, &Error{Token: tok, Reason: ReasonZeroReps}
-		}
-		if m[1] != "" {
-			weight = m[1]
+		if w != "" {
+			weight = w
 		}
 		entry.Sets = append(entry.Sets, Set{Weight: weight, Reps: reps})
 	}

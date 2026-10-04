@@ -24,6 +24,7 @@ A workout is one gym session. It belongs to one user and holds:
 | Workout type | Optional. One of a closed set: `lower`, `upper`, `push`, `pull`, `full body`, `push+pull`, `push+lower`, and the names of the 2024-2025 programs `workout A`, `workout B`, `день 1`, `день 2`, `руки`, `рест`. Stored as text; the allowed set is application configuration, not a database constraint, and is expected to grow. Matching is case-insensitive. The historical import also stored `pull+push` as `push+pull` and `legs` as `lower`; that was cleanup of one user's data, and the bot parser has no such mappings. |
 | Calories, protein | Optional integers describing intake before the workout (kcal and grams). Most historical workouts have neither; the user started recording them recently. |
 | Note | Optional free text. Anything in the header that is not the date, a recognized workout type, or the intake block. |
+| Started, finished | Optional timestamps of the session's start and end, set together or not at all. |
 | Raw text | The exact text the workout was parsed from. Always present. |
 | Source, source ref | Where the workout came from and an identifier within that source (see below). |
 
@@ -88,12 +89,13 @@ Users write workouts in a compact text format. The bot parses it into the struct
 
 The first non-empty line is the header. It starts with the date as `DD.MM` or `DD.MM.YYYY`. Without a year, the year of the post date is used, with no other adjustment: a `31.12` workout posted on 2 January gets the new year unless written as `31.12.YYYY`. Right after the date may come a workout type from the closed set, matched case-insensitively as a prefix of the remaining header text. An intake block `(kcal/protein)` may appear anywhere in the header. Any other text becomes the note.
 
-Every following non-empty line is an exercise line. The exercise name is everything before the first set token, so names can contain spaces and any script. After the name come whitespace-separated set tokens of two forms:
+Every following non-empty line is an exercise line. The exercise name is everything before the first set token, so names can contain spaces and any script. After the name come whitespace-separated set tokens of three forms:
 
 - `W-R` sets the current weight to W and records a set of R reps at W.
 - `-R` records a set of R reps at the current weight.
+- `W-` sets the current weight to W and records a planned set: an exercise not yet done, with no reps. It may be mixed with done sets (`розведення гантелей 20-12 20-`). A bare `-` is not a token, and an explicit `W-0` or `-0` is an error (0 reps is treated as a typo; the planned form is the empty one).
 
-The current weight starts at zero on every line and carries forward until another `W-R` token changes it. Weights may use a dot as decimal separator.
+The current weight starts at zero on every line and carries forward until a `W-R` or `W-` token changes it. Weights may use a dot as decimal separator.
 
 The example above produces:
 
@@ -103,7 +105,17 @@ The example above produces:
 | підтягування | 82×9, 82×9 |
 | скручування | 0×10, 0×20, 0×30 |
 
-Parsing is all-or-nothing per message. A line that has no set tokens, has no name, or contains a token that is neither form makes the whole message invalid; nothing is saved and the error identifies the line and token. There are no note lines inside the body.
+Parsing is all-or-nothing per message. A line that has no set tokens, has no name, or contains a token that is none of the forms makes the whole message invalid; nothing is saved and the error identifies the line and token. There are no note lines inside the body.
+
+Every message is in one of three states:
+
+| State | Meaning | Preview | Save |
+|---|---|---|---|
+| Invalid | parse error | error with line and token | no |
+| Valid but unsavable | parses, has at least one planned set | sets shown as `20×?`, with a note that it cannot be saved yet | no |
+| Valid | parses, no planned sets | full preview | yes, once no misspelling is unresolved |
+
+Planned sets exist only in the text and the bot preview. The parser records them with reps 0, the bot refuses to save a workout that has any, and they are never sent to the API or stored; the rule that stored sets have a positive integer of reps is unchanged. Editing the message to fill in the reps makes it valid.
 
 ## Historical import
 
@@ -130,6 +142,8 @@ Some source lines were edited before import, so the raw text is not what was ori
 Exercise names were merged at import. Each entry keeps its name as written and points to the merged exercise, and every merged spelling was saved as an alias (88 aliases, 73 exercises). The map is `EXERCISE_MERGES` in `scripts/import_common.py`.
 
 Calf raises written without a position (`підйом на ікри`, `підйоми на ікри`, `ікри`) point to `підйом на ікри стоячи` from 2025-04-16 to 2025-08-31 and to `підйом на ікри сидячи` outside that period. The target depends on the date, so these three spellings have no alias. A new workout that uses one of them will create a new exercise under that name.
+
+Start and finish times of imported channel workouts come from Telegram Web: the post time is the start and the last edit time is the finish. They are set only where the message was edited within 3 hours of posting and was not part of the bulk post on 2025-06-20 (159 workouts); for the rest the times are unknown and left empty. The `logs_expanded` workouts have none.
 
 ## Where rules are enforced
 
