@@ -12,8 +12,9 @@ import (
 // rest of the package only refers to keys. Values are HTML (tele.ModeHTML)
 // except button labels and callback answers, which are plain text.
 const (
-	txtStart = "start"
-	txtHelp  = "help"
+	txtStart       = "start"
+	txtHelp        = "help"
+	txtWebSignedIn = "web_signed_in"
 
 	txtReady            = "ready"
 	txtNewNames         = "new_names"
@@ -68,6 +69,8 @@ const (
 var texts = map[string]string{
 	txtStart: "Hi! Send a workout log and I will preview it, then press Save.\n\n" + helpBody,
 	txtHelp:  helpBody,
+
+	txtWebSignedIn: "Signed in on the web. Return to the browser.",
 
 	txtReady:    "Ready to save.",
 	txtNewNames: "New: %s",
@@ -126,6 +129,9 @@ var texts = map[string]string{
 	prefixAPICode + apiclient.CodeBadNameIsAlias:   "The old name is already an alias.",
 	prefixAPICode + apiclient.CodeConflict:         "Conflict with existing data.",
 	prefixAPICode + apiclient.CodeInternal:         "Internal API error.",
+	prefixAPICode + apiclient.CodeForbidden:        "The API refused access.",
+	prefixAPICode + apiclient.CodeLoginInvalid:     "This sign-in link is invalid or already used. Start again in the browser.",
+	prefixAPICode + apiclient.CodeLoginExpired:     "This sign-in link has expired. Start again in the browser.",
 	prefixAPICode + apiCodeUnavailable:             "The API is unreachable.",
 	prefixAPICode + apiCodeUnknown:                 "Unexpected API response.",
 }

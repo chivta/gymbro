@@ -19,6 +19,9 @@ func (e *AppError) Error() string { return e.Code }
 var (
 	ErrInvalidRequest   = &AppError{Status: http.StatusBadRequest, Code: apiclient.CodeInvalidRequest}
 	ErrUnauthorized     = &AppError{Status: http.StatusUnauthorized, Code: apiclient.CodeUnauthorized}
+	ErrForbidden        = &AppError{Status: http.StatusForbidden, Code: apiclient.CodeForbidden}
+	ErrLoginInvalid     = &AppError{Status: http.StatusNotFound, Code: apiclient.CodeLoginInvalid}
+	ErrLoginExpired     = &AppError{Status: http.StatusGone, Code: apiclient.CodeLoginExpired}
 	ErrUserNotFound     = &AppError{Status: http.StatusNotFound, Code: apiclient.CodeUserNotFound}
 	ErrSameExercise     = &AppError{Status: http.StatusUnprocessableEntity, Code: apiclient.CodeSameExercise}
 	ErrExerciseNotFound = &AppError{Status: http.StatusNotFound, Code: apiclient.CodeExerciseNotFound}

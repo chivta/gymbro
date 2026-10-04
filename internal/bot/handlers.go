@@ -14,9 +14,28 @@ import (
 	"gymbro/internal/workout"
 )
 
+// onStart greets the user, or, with a payload (a web sign-in deep link
+// t.me/<bot>?start=<token>), confirms that sign-in for the sender.
 func (b *Bot) onStart(c tele.Context) error {
-	_, err := b.out.send(b.ctx, c.Chat().ID, tr(txtStart), nil, nil)
+	text := tr(txtStart)
+	loginToken := c.Message().Payload
+	if loginToken != "" {
+		text = b.confirmWebLogin(loginToken, c.Sender().ID)
+	}
+	_, err := b.out.send(b.ctx, c.Chat().ID, text, nil, nil)
 	return err
+}
+
+// confirmWebLogin confirms a web sign-in request and returns the reply text.
+func (b *Bot) confirmWebLogin(loginToken string, telegramUserID int64) string {
+	ctx, cancel := b.apiCtx()
+	defer cancel()
+	err := b.api.ConfirmLogin(ctx, apiclient.ConfirmLoginRequest{LoginToken: loginToken, TelegramUserID: telegramUserID})
+	if err != nil {
+		logAPIError("confirm_login", err)
+		return apiErrorText(err)
+	}
+	return tr(txtWebSignedIn)
 }
 
 func (b *Bot) onHelp(c tele.Context) error {

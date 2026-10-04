@@ -11,8 +11,12 @@ import (
 type Config struct {
 	Port        string `env:"PORT"         validate:"required,numeric"`
 	DatabaseURL string `env:"DATABASE_URL" validate:"required,url"`
-	// APISecret is the static bearer token clients must present on /v1.
+	// APISecret is the static bearer token the bot presents on /v1.
 	APISecret string `env:"API_SECRET" validate:"required"`
+	// BotUsername is the Telegram bot's username without @, for sign-in deep links.
+	BotUsername string `env:"BOT_USERNAME" validate:"required,excludes=@"`
+	// CookieSecure sets Secure on auth cookies. Disable only for local HTTP.
+	CookieSecure bool `env:"COOKIE_SECURE" envDefault:"true"`
 }
 
 // Load reads .env if present, falls back to OS env, and validates the result.

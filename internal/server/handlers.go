@@ -12,10 +12,15 @@ import (
 	"gymbro/internal/store"
 )
 
-// handlers holds the HTTP handlers of the /v1 API. They know nothing about auth.
+// handlers holds the HTTP handlers. They know nothing about authorization: the
+// route groups they are mounted on carry the guards (see auth.go).
 type handlers struct {
 	store    *store.Store
 	validate *validator.Validate
+	// botUsername builds the sign-in deep link, without the @.
+	botUsername string
+	// cookieSecure sets the Secure attribute on auth cookies (false only for local HTTP).
+	cookieSecure bool
 }
 
 type userURI struct {
@@ -29,13 +34,15 @@ type listWorkoutsQuery struct {
 	Before string `form:"before"`
 }
 
-// register mounts the routes on the (already authenticated) /v1 group.
-func (h *handlers) register(v1 *gin.RouterGroup) {
-	v1.POST("/identities/resolve", h.resolveIdentity)
-	v1.POST("/users/:id/workouts", h.saveWorkout)
-	v1.GET("/users/:id/workouts", h.listWorkouts)
-	v1.GET("/users/:id/exercises", h.listExercises)
-	v1.POST("/users/:id/exercises/replace", h.replaceExercise)
+// register mounts the /v1 routes. service admits only the bot; userAccess
+// admits the bot or a session of the :id user.
+func (h *handlers) register(service, userAccess *gin.RouterGroup) {
+	service.POST("/identities/resolve", h.resolveIdentity)
+	service.POST("/users/:id/workouts", h.saveWorkout)
+	service.GET("/users/:id/exercises", h.listExercises)
+	service.POST("/users/:id/exercises/replace", h.replaceExercise)
+	service.POST("/auth/telegram/confirm", h.confirmTelegram)
+	userAccess.GET("/users/:id/workouts", h.listWorkouts)
 }
 
 func (h *handlers) resolveIdentity(c *gin.Context) {

@@ -1,6 +1,7 @@
-// Package store is the Postgres-backed persistence of users, workouts and
-// exercises. Each method is one transaction and returns apperr sentinels for
-// expected failures; anything else is an unclassified error for the caller to log.
+// Package store is the Postgres-backed persistence of users, workouts,
+// exercises, web sign-in requests and sessions. Each method is one transaction
+// and returns apperr sentinels for expected failures; anything else is an
+// unclassified error for the caller to log.
 package store
 
 import (

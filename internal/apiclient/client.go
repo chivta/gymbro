@@ -69,6 +69,14 @@ func (c *Client) ReplaceExercise(ctx context.Context, userID int64, req ReplaceE
 	return resp, err
 }
 
+// ConfirmLogin confirms a web sign-in request on behalf of a Telegram user.
+// Fails with CodeLoginInvalid or CodeLoginExpired when the token cannot be used.
+func (c *Client) ConfirmLogin(ctx context.Context, req ConfirmLoginRequest) error {
+	return c.do(ctx, http.MethodPost, "/v1/auth/telegram/confirm", req, nil)
+}
+
+// do sends the request and decodes the JSON response into respBody; a nil
+// respBody skips decoding (for 204 responses).
 func (c *Client) do(ctx context.Context, method, path string, reqBody, respBody any) error {
 	var body io.Reader
 	if reqBody != nil {
@@ -103,6 +111,9 @@ func (c *Client) do(ctx context.Context, method, path string, reqBody, respBody 
 		return &Error{Status: resp.StatusCode, Code: payload.Error}
 	}
 
+	if respBody == nil {
+		return nil
+	}
 	err = json.NewDecoder(resp.Body).Decode(respBody)
 	if err != nil {
 		return fmt.Errorf("decode response: %w", err)

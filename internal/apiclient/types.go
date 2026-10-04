@@ -14,6 +14,9 @@ const (
 	CodeBadNameIsAlias   = "bad_name_is_alias"
 	CodeConflict         = "conflict"
 	CodeInternal         = "internal"
+	CodeForbidden        = "forbidden"
+	CodeLoginInvalid     = "login_invalid"
+	CodeLoginExpired     = "login_expired"
 )
 
 // Outcomes of a replace operation: merged when the bad name was an exercise,
@@ -125,4 +128,33 @@ type WorkoutEntry struct {
 type ListWorkoutsResponse struct {
 	Workouts   []Workout `json:"workouts"`
 	NextCursor *string   `json:"next_cursor"`
+}
+
+// Login poll statuses.
+const (
+	LoginPending   = "pending"
+	LoginConfirmed = "confirmed"
+)
+
+// ConfirmLoginRequest is sent by the bot when a Telegram user opens a sign-in
+// deep link. LoginToken is the /start payload.
+type ConfirmLoginRequest struct {
+	LoginToken     string `json:"login_token"      validate:"required,max=64"`
+	TelegramUserID int64  `json:"telegram_user_id" validate:"required,gt=0"`
+}
+
+// StartLoginResponse: the browser opens BotURL and polls until ExpiresAt.
+type StartLoginResponse struct {
+	BotURL    string    `json:"bot_url"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// PollLoginResponse: Status is one of the Login* constants; UserID is set once confirmed.
+type PollLoginResponse struct {
+	Status string `json:"status"`
+	UserID int64  `json:"user_id,omitempty"`
+}
+
+type MeResponse struct {
+	UserID int64 `json:"user_id"`
 }

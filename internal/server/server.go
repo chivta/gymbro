@@ -34,13 +34,15 @@ func Run(ctx context.Context, cfg config.Config) error {
 	if err != nil {
 		return fmt.Errorf("create validator: %w", err)
 	}
-	h := &handlers{store: store.New(db), validate: validate}
+	st := store.New(db)
+	h := &handlers{store: st, validate: validate, botUsername: cfg.BotUsername, cookieSecure: cfg.CookieSecure}
 
 	router := gin.New()
-	router.Use(gin.Recovery())
+	router.Use(gin.Recovery(), authenticate(cfg.APISecret, st))
 	v1 := router.Group("/v1")
-	v1.Use(sharedSecretAuth(cfg.APISecret))
-	h.register(v1)
+	h.register(v1.Group("", requireService()), v1.Group("", requireUserAccess()))
+	authGroup := router.Group("/auth")
+	h.registerAuth(authGroup, authGroup.Group("", requireSession()))
 
 	srv := &http.Server{
 		Addr:              net.JoinHostPort("", cfg.Port),

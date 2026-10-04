@@ -4,7 +4,7 @@ This document explains how workout data is represented in this project: what eac
 
 ## System shape
 
-Postgres is the only store. A Go API owns all reads and writes. Frontends (currently a Telegram bot, later a mobile app) talk only to the API and never to the database. The one exception is a pair of one-time Python scripts in `scripts/` that imported historical workouts directly into the database, one from a Markdown log and one from a Telegram channel export; they are not part of the running system. See "Historical import" below for where the imported data departs from the rules in this document.
+Postgres is the only store. A Go API owns all reads and writes. Frontends (currently a Telegram bot and a web app, later a mobile app) talk only to the API and never to the database. The one exception is a pair of one-time Python scripts in `scripts/` that imported historical workouts directly into the database, one from a Markdown log and one from a Telegram channel export; they are not part of the running system. See "Historical import" below for where the imported data departs from the rules in this document.
 
 Nothing in the core model is Telegram-specific. Telegram appears only as an identity provider and as a source of workouts.
 
@@ -13,6 +13,27 @@ Nothing in the core model is Telegram-specific. Telegram appears only as an iden
 A user is an internal entity with a serial integer ID. That ID is the only user identifier used inside the system, in every foreign key and every API call.
 
 External accounts are bound to a user through identities. An identity is a pair of provider name and external ID, unique across the system, pointing to exactly one user. A user can have several identities. The Telegram bot resolves an incoming Telegram user to an internal user through the identity with provider `telegram` and the Telegram user ID as external ID. A Telegram ID is never used as a user ID.
+
+## Authentication
+
+The API knows two kinds of caller. The bot authenticates with a shared secret (`Authorization: Bearer`) and acts as a trusted service that may act on any user. A browser authenticates with a session: a random token in the HttpOnly cookie `gymbro_session`, valid for 30 days, tied to one internal user. Telegram appears only as the identity provider that confirms a sign-in; sessions and users carry nothing Telegram-specific.
+
+Sign-in uses a login request, valid for 10 minutes:
+
+1. The browser calls `POST /auth/telegram/login`. The API creates a login request with two random values: a login token, returned inside the bot deep link `https://t.me/<bot>?start=<token>`, and a browser nonce, set as the HttpOnly cookie `gymbro_login`.
+2. The user opens the link and presses Start. The bot receives `/start <token>` and calls `POST /v1/auth/telegram/confirm` with the token and the sender's Telegram user ID. The API resolves that Telegram identity to a user (creating one if missing, as for any identity) and marks the request confirmed for that user. A request can be confirmed once.
+3. The browser polls `POST /auth/telegram/poll` every 2 seconds. The API finds the request by the nonce cookie. Once it is confirmed, the API marks it consumed, creates a session and sets the session cookie, in one transaction. A consumed request cannot be polled again.
+
+The nonce binds the request to the browser that started it, so whoever only sees the deep link cannot take the session. Login tokens, nonces and session tokens are stored only as SHA-256 hashes. Expired login requests and sessions are deleted whenever a new login request is created. Signing out deletes the session.
+
+Today the bot serves only its allowed Telegram user, so only that user can sign in on the web.
+
+| Route | Who may call it |
+|---|---|
+| `POST /auth/telegram/login`, `POST /auth/telegram/poll` | anyone |
+| `GET /auth/me`, `POST /auth/logout` | a session |
+| `GET /v1/users/:id/workouts` | the bot for any user, or a session of user `:id` |
+| every other `/v1` route, including `/v1/auth/telegram/confirm` | the bot only |
 
 ## Workout
 
@@ -160,5 +181,6 @@ Start and finish times of imported channel workouts come from Telegram Web: the 
 | An alias key must not equal a live exercise key | Application (replace removes the bad exercise) |
 | Entries and exercises belong to the same user | Application |
 | Text format grammar | Bot (parser) |
+| Login request confirmed once, consumed once | Database (conditional update) |
 
 The normalized key relies on the database lowercasing non-ASCII text, which requires a UTF-8 or ICU locale on the database. Any code that normalizes names outside the database must produce the same key: trim, collapse whitespace, lowercase.
