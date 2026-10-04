@@ -1,0 +1,5 @@
+.env
+dumps/
+scripts/.venv/
+scripts/__pycache__/
+scripts/parsed_*.json

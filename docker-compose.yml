@@ -1,0 +1,39 @@
+# Local development only.
+services:
+  api:
+    build:
+      context: .
+      target: dev
+    env_file: .env
+    ports:
+      - "${PORT}:${PORT}"
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  bot:
+    build:
+      context: .
+      target: dev
+    env_file: .env
+    command: air -c .air.bot.toml
+    volumes:
+      - .:/app
+    depends_on:
+      - api
+
+  postgres:
+    image: postgres:18-alpine
+    env_file: .env
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pgdata:

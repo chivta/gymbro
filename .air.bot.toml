@@ -1,0 +1,8 @@
+root = "."
+# Build output goes outside the bind mount so the container leaves no files in the repo.
+tmp_dir = "/tmp/air-bot"
+
+[build]
+cmd = "go build -o /tmp/air-bot/bot ./cmd/bot"
+bin = "/tmp/air-bot/bot"
+include_ext = ["go", "sql"]
