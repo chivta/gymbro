@@ -4,7 +4,7 @@ This document explains how workout data is represented in this project: what eac
 
 ## System shape
 
-Postgres is the only store. A Go API owns all reads and writes. Frontends (currently a Telegram bot and a web app, later a mobile app) talk only to the API and never to the database. The one exception is a pair of one-time Python scripts in `scripts/` that imported historical workouts directly into the database, one from a Markdown log and one from a Telegram channel export; they are not part of the running system. See "Historical import" below for where the imported data departs from the rules in this document.
+Postgres is the only store. A Go API owns all reads and writes. Frontends (currently a Telegram bot and a web app, later a mobile app) talk only to the API and never to the database. The one exception was a pair of one-time Python scripts that imported historical workouts directly into the database, one from a Markdown log and one from a Telegram channel export. They were never part of the running system and were removed from the repo after the import. See "Historical import" below for where the imported data departs from the rules in this document.
 
 Nothing in the core model is Telegram-specific. Telegram appears only as an identity provider and as a source of workouts.
 
@@ -140,7 +140,7 @@ Planned sets exist only in the text and the bot preview. The parser records them
 
 ## Historical import
 
-`scripts/import_logs.py` and `scripts/import_telegram.py` loaded 329 workouts (2024-09-28 to 2026-10-03) for the user with Telegram id 685751256. They share `scripts/import_common.py`. The imported data departs from the rules above in these ways.
+`scripts/import_logs.py` and `scripts/import_telegram.py` loaded 329 workouts (2024-09-28 to 2026-10-03) for the user with Telegram id 685751256. The scripts, their shared `scripts/import_common.py` and the two source files (`logs_expanded.md`, `messages.html`) are no longer in the tree; commit `685c50d` is the last one that has them. The imported data departs from the rules above in these ways.
 
 Parsing is looser than the bot grammar:
 
@@ -160,7 +160,7 @@ Some weights are corrected by rule, so they differ from the raw text:
 
 Some source lines were edited before import, so the raw text is not what was originally written: typos in exercise names, sets with swapped weight and reps, and missing weights or reps filled in from neighbouring sessions. In `logs_expanded.md` that covers 16 lines of March and April 2025.
 
-Exercise names were merged at import. Each entry keeps its name as written and points to the merged exercise, and every merged spelling was saved as an alias (88 aliases, 73 exercises). The map is `EXERCISE_MERGES` in `scripts/import_common.py`.
+Exercise names were merged at import. Each entry keeps its name as written and points to the merged exercise, and every merged spelling was saved as an alias (88 aliases, 73 exercises). The map was `EXERCISE_MERGES` in `scripts/import_common.py`; the aliases in the database are now its record.
 
 Calf raises written without a position (`підйом на ікри`, `підйоми на ікри`, `ікри`) point to `підйом на ікри стоячи` from 2025-04-16 to 2025-08-31 and to `підйом на ікри сидячи` outside that period. The target depends on the date, so these three spellings have no alias. A new workout that uses one of them will create a new exercise under that name.
 
