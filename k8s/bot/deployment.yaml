@@ -33,7 +33,7 @@ spec:
             - name: ALLOWED_TELEGRAM_USER_ID
               value: "685751256"
             - name: BOT_DB_PATH
-              value: /data/bot.db
+              value: /data/djymbot.db
           ports:
             - name: health
               containerPort: 8081

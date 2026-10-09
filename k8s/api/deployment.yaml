@@ -31,7 +31,7 @@ spec:
             - name: COOKIE_SECURE
               value: "true"
             - name: BOT_USERNAME
-              value: djymbrobot
+              value: djymbot
           ports:
             - name: http
               containerPort: 8090
