@@ -343,3 +343,15 @@ func TestDraftPersistenceLatest(t *testing.T) {
 		t.Fatal("expired rows returned by latest")
 	}
 }
+
+func TestSourceRef(t *testing.T) {
+	// Same chat and message id under two bots must give two different keys.
+	first := sourceRef(111, 685751256, 4)
+	second := sourceRef(222, 685751256, 4)
+	if first != "111:685751256:4" {
+		t.Errorf("sourceRef = %q, want 111:685751256:4", first)
+	}
+	if first == second {
+		t.Errorf("two bots share the key %q", first)
+	}
+}

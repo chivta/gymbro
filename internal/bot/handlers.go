@@ -298,7 +298,7 @@ func (b *Bot) onSave(cb *tele.Callback, userMsg *tele.Message, d *draft) error {
 
 	ctx, cancel := b.apiCtx()
 	defer cancel()
-	req := saveRequest(w, d.Text, userMsg)
+	req := saveRequest(w, d.Text, b.tg.Me.ID, userMsg)
 	req.StartedAt, req.FinishedAt = workoutTimes(d.Posted, firstSaved)
 	resp, err := b.api.SaveWorkout(ctx, userID, req)
 	if err != nil {
@@ -342,8 +342,9 @@ func workoutTimes(posted, firstSaved time.Time) (started, finished *time.Time) {
 	return &posted, &firstSaved
 }
 
-// saveRequest builds the API request from a parse. source_ref is "<chat id>:<message id>".
-func saveRequest(w parser.Workout, rawText string, userMsg *tele.Message) apiclient.SaveWorkoutRequest {
+// saveRequest builds the API request from a parse. botID is the bot's own
+// Telegram id, which leads the source_ref (see sourceRef).
+func saveRequest(w parser.Workout, rawText string, botID int64, userMsg *tele.Message) apiclient.SaveWorkoutRequest {
 	req := apiclient.SaveWorkoutRequest{
 		PerformedOn: w.Date.Format(dateLayout),
 		Type:        w.Type,
@@ -352,7 +353,7 @@ func saveRequest(w parser.Workout, rawText string, userMsg *tele.Message) apicli
 		Note:        w.Note,
 		RawText:     rawText,
 		Source:      sourceTelegramBot,
-		SourceRef:   sourceRef(userMsg.Chat.ID, userMsg.ID),
+		SourceRef:   sourceRef(botID, userMsg.Chat.ID, userMsg.ID),
 		Entries:     make([]apiclient.Entry, len(w.Entries)),
 	}
 	for i, e := range w.Entries {

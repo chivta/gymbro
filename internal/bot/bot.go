@@ -342,7 +342,10 @@ func (b *Bot) sendLong(chatID int64, text string) error {
 	return nil
 }
 
-// sourceRef is the workout's source_ref: "<chat id>:<message id>".
-func sourceRef(chatID int64, msgID int) string {
-	return strconv.FormatInt(chatID, 10) + ":" + strconv.Itoa(msgID)
+// sourceRef is the workout's source_ref: "<bot id>:<chat id>:<message id>".
+// A private chat has the user's id with every bot and message ids restart at 1
+// in each of them, so without the bot id a second bot would overwrite the
+// workouts saved through the first.
+func sourceRef(botID, chatID int64, msgID int) string {
+	return strconv.FormatInt(botID, 10) + ":" + strconv.FormatInt(chatID, 10) + ":" + strconv.Itoa(msgID)
 }

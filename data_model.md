@@ -91,7 +91,7 @@ Every workout records a source and a source ref, unique together per user.
 |---|---|---|
 | `telegram_channel` | `<message id>` | Historical import from the user's Telegram channel export (`messages.html`). The export carries no channel id. |
 | `logs_expanded` | ISO date, with `#2`, `#3` appended when a date repeats | Historical import of the 2024-2025 Markdown log (`logs_expanded.md`). |
-| `telegram_bot` | `<chat id>:<message id>` | Workouts logged through the Telegram bot. |
+| `telegram_bot` | `<bot id>:<chat id>:<message id>` | Workouts logged through the Telegram bot. The bot id keeps two bots apart: a private chat has the same chat id with every bot, and message ids restart at 1 in each. Workouts saved before 2026-10-09 through the first bot, @djymbrobot, have the older form `<chat id>:<message id>`. |
 
 Saving a workout from the bot is an upsert on this key. If the user edits a message they already saved and saves again, the existing workout is replaced, including all its entries and sets. This is the only editing mechanism. There is no separate edit flow and no delete flow in the MVP.
 
