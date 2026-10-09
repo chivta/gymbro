@@ -61,6 +61,8 @@ type Bot struct {
 	state     *state.Store // first-save times and drafts, survives restarts
 	allowedID int64
 	userID    atomic.Int64 // internal user ID, 0 until resolved
+	// redact hides the bot token in error text: telebot errors can embed the request URL.
+	redact func(string) string
 }
 
 // Run starts long polling and blocks until ctx is cancelled and the poller and
@@ -101,9 +103,10 @@ func Run(ctx context.Context, cfg config.BotConfig) error {
 		out:       newSender(tg),
 		drafts:    newDraftCache(st, draftTTL, time.Now),
 		allowedID: cfg.AllowedTelegramUserID,
+		redact:    redact,
 	}
 	b.register()
-	b.setCommands(redact)
+	b.setCommands()
 
 	var wg sync.WaitGroup
 	wg.Add(3)
@@ -142,7 +145,7 @@ func (b *Bot) register() {
 
 // setCommands publishes the command menu for the allowed user's private chat
 // only (a private chat ID equals the user ID). Failure is logged, not fatal.
-func (b *Bot) setCommands(redact func(string) string) {
+func (b *Bot) setCommands() {
 	cmds := []tele.Command{
 		{Text: cmdExercises, Description: plain(txtCmdExercises)},
 		{Text: cmdAliasExercise, Description: plain(txtCmdAliasExercise)},
@@ -150,7 +153,7 @@ func (b *Bot) setCommands(redact func(string) string) {
 	}
 	err := b.tg.SetCommands(cmds, tele.CommandScope{Type: tele.CommandScopeChat, ChatID: b.allowedID})
 	if err != nil {
-		log.Warn().Str("error", redact(err.Error())).Msg("set bot commands failed")
+		log.Warn().Str("error", b.redact(err.Error())).Msg("set bot commands failed")
 	}
 }
 

@@ -17,6 +17,9 @@ import (
 // onStart greets the user, or, with a payload (a web sign-in deep link
 // t.me/<bot>?start=<token>), confirms that sign-in for the sender.
 func (b *Bot) onStart(c tele.Context) error {
+	// The menu is scoped to the user's chat, which Telegram only knows once the
+	// user has started the bot, so the attempt at startup fails for a fresh bot.
+	b.setCommands()
 	text := tr(txtStart)
 	loginToken := c.Message().Payload
 	if loginToken != "" {
